@@ -1,0 +1,32 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Node & Web Portal
+node_modules/
+dist/
+.vite/
+*.local
+
+# Flutter & Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.mode1v3
+*.mode2v3
+*.moved-aside
+*.pbxuser
+*.perspectivev3
+**/.idea/
+**/android/.gradle
+**/android/local.properties
+**/android/app/build
+
+# Environment & Secrets
+.env
+.env.*
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
