@@ -1,101 +1,135 @@
-// lib/presentation/state/sync_status_provider.dart
 import 'dart:async';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../../core/sync_worker.dart';
 import '../../data/local/database.dart';
 import '../../data/services/sync_queue_dispatcher.dart';
 
-enum SyncLifecycleState { idle, syncing, synced, error }
+enum SyncLifecycleState {
+  idle,
+  syncing,
+  synced,
+  error,
+}
+
+// Backward-compatible alias
+typedef SyncStatus = SyncLifecycleState;
 
 class SyncState {
   final SyncLifecycleState status;
   final int pendingCount;
-  final int inFlightCount;
   final DateTime? lastSyncedAt;
+  final double lastCompressionRatio;
+  final int lastLatencyMs;
   final String? errorMessage;
-  final double? lastCompressionRatio;
 
   const SyncState({
-    required this.status,
+    this.status = SyncLifecycleState.idle,
     this.pendingCount = 0,
-    this.inFlightCount = 0,
     this.lastSyncedAt,
+    this.lastCompressionRatio = 1.0,
+    this.lastLatencyMs = 0,
     this.errorMessage,
-    this.lastCompressionRatio,
   });
 
   SyncState copyWith({
     SyncLifecycleState? status,
     int? pendingCount,
-    int? inFlightCount,
     DateTime? lastSyncedAt,
-    String? errorMessage,
     double? lastCompressionRatio,
-    bool clearError = false,
+    int? lastLatencyMs,
+    String? errorMessage,
   }) {
     return SyncState(
       status: status ?? this.status,
       pendingCount: pendingCount ?? this.pendingCount,
-      inFlightCount: inFlightCount ?? this.inFlightCount,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
-      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       lastCompressionRatio: lastCompressionRatio ?? this.lastCompressionRatio,
+      lastLatencyMs: lastLatencyMs ?? this.lastLatencyMs,
+      errorMessage: errorMessage,
     );
   }
 }
 
+// Primary database provider expected by main.dart
+final appDatabaseProvider = Provider<AppDatabase>((ref) {
+  final db = AppDatabase();
+  ref.onDispose(() => db.close());
+  return db;
+});
+
+// Alias for any service looking for databaseProvider
+final databaseProvider = appDatabaseProvider;
+
+final syncQueueDispatcherProvider = Provider<SyncQueueDispatcher>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return SyncQueueDispatcher(
+    db: db,
+    deviceId: 'PINTIG-V2507A-EDGE',
+  );
+});
+
 class SyncStatusNotifier extends StateNotifier<SyncState> {
   final AppDatabase _db;
   final SyncQueueDispatcher _dispatcher;
-  StreamSubscription<int>? _queueSubscription;
+  StreamSubscription? _queueSubscription;
 
   SyncStatusNotifier({
     required AppDatabase db,
     required SyncQueueDispatcher dispatcher,
   })  : _db = db,
         _dispatcher = dispatcher,
-        super(const SyncState(status: SyncLifecycleState.idle)) {
-    _bindQueueWatcher();
+        super(const SyncState()) {
+    _initQueueWatcher();
   }
 
-  void _bindQueueWatcher() {
-    final pendingQuery = _db.select(_db.syncQueue)
-      ..where((tbl) => tbl.syncStatus.equals('PENDING'));
+  void _initQueueWatcher() {
+    final syncTable = _db.allTables.cast<TableInfo?>().firstWhere(
+      (t) => t?.actualTableName == 'sync_queue',
+      orElse: () => null,
+    );
 
-    _queueSubscription = pendingQuery.watch().map((rows) => rows.length).listen((count) {
-      state = state.copyWith(pendingCount: count);
+    _queueSubscription = _db.customSelect(
+      "SELECT COUNT(*) AS count FROM sync_queue WHERE sync_status = 'PENDING'",
+      readsFrom: syncTable != null ? {syncTable} : {},
+    ).watch().listen((rows) {
+      if (rows.isNotEmpty) {
+        final count = rows.first.read<int>('count');
+        state = state.copyWith(pendingCount: count);
+      }
     });
   }
 
-  Future<void> pushSync() async {
+  Future<void> triggerSync() async {
     if (state.status == SyncLifecycleState.syncing) return;
 
-    state = state.copyWith(
-      status: SyncLifecycleState.syncing,
-      clearError: true,
-    );
+    state = state.copyWith(status: SyncLifecycleState.syncing);
 
-    // Concurrently queue WorkManager background recovery task
-    await PintigSyncWorkerManager.triggerImmediateSync();
-
-    // Execute direct synchronous transport pipeline on device foreground thread
     final result = await _dispatcher.dispatchPendingQueue();
+
+    final countRow = await _db.customSelect(
+      "SELECT COUNT(*) AS count FROM sync_queue WHERE sync_status = 'PENDING'",
+    ).getSingle();
+    final remaining = countRow.read<int>('count');
 
     if (result.isSuccess) {
       state = state.copyWith(
         status: SyncLifecycleState.synced,
+        pendingCount: remaining,
         lastSyncedAt: DateTime.now(),
         lastCompressionRatio: result.compressionRatio,
+        lastLatencyMs: result.latencyMs,
+        errorMessage: null,
       );
     } else {
       state = state.copyWith(
         status: SyncLifecycleState.error,
-        errorMessage: result.errorMessage ?? 'Unknown synchronization transport failure',
+        pendingCount: remaining,
+        errorMessage: result.errorMessage,
       );
     }
   }
+
+  Future<void> pushSync() => triggerSync();
 
   @override
   void dispose() {
@@ -104,23 +138,12 @@ class SyncStatusNotifier extends StateNotifier<SyncState> {
   }
 }
 
-final appDatabaseProvider = Provider<AppDatabase>((ref) {
-  final db = AppDatabase();
-  ref.onDispose(() => db.close());
-  return db;
-});
-
-final syncDispatcherProvider = Provider<SyncQueueDispatcher>((ref) {
+final syncStatusProvider =
+    StateNotifierProvider<SyncStatusNotifier, SyncState>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return SyncQueueDispatcher(
-    db: db,
-    deviceId: 'PINTIG-DEV-SAMSUNG-A03-01',
-  );
-});
-
-final syncStatusProvider = StateNotifierProvider<SyncStatusNotifier, SyncState>((ref) {
+  final dispatcher = ref.watch(syncQueueDispatcherProvider);
   return SyncStatusNotifier(
-    db: ref.watch(appDatabaseProvider),
-    dispatcher: ref.watch(syncDispatcherProvider),
+    db: db,
+    dispatcher: dispatcher,
   );
 });

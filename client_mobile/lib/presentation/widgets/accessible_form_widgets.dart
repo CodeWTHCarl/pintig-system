@@ -102,7 +102,6 @@ class PintigCdssBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       liveRegion: true,
-      alert: true,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16.0),
@@ -154,6 +153,9 @@ class PintigCdssBanner extends StatelessWidget {
     );
   }
 }
+
+
+
 
 class PintigPrimaryButton extends StatelessWidget {
   final String label;

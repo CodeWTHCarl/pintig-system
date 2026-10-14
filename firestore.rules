@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    match /tenants/{tenantId}/barangays/{barangayId} {
+      
+      // Monthly aggregate metrics read by web portal
+      match /aggregates/{yearMonth} {
+        allow read, write: if true;
+      }
+      
+      // Real-time clinical triage feed
+      match /triage_alerts/{alertId} {
+        allow read, write: if true;
+      }
+      
+      // Primary clinical entity stores
+      match /encounters/{encounterId} {
+        allow read, write: if true;
+      }
+      
+      match /patients/{patientId} {
+        allow read, write: if true;
+      }
+      
+      match /households/{householdId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}

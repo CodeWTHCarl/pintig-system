@@ -1,8 +1,6 @@
-// lib/core/sync_worker.dart
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
-
 import '../data/local/database.dart';
 import '../data/services/sync_queue_dispatcher.dart';
 
@@ -17,7 +15,6 @@ void callbackDispatcher() {
       final prefs = await SharedPreferences.getInstance();
       final deviceId = prefs.getString(kPrefDeviceIdKey) ?? 'PINTIG-PROD-EDGE-CLIENT';
 
-      // Open isolated local database instance on background isolate
       final db = AppDatabase();
       final dispatcher = SyncQueueDispatcher(
         db: db,
@@ -56,7 +53,7 @@ class PintigSyncWorkerManager {
       ),
       backoffPolicy: BackoffPolicy.exponential,
       backoffPolicyDelay: const Duration(seconds: 30),
-      existingWorkPolicy: ExistingWorkPolicy.keep,
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
     );
   }
 

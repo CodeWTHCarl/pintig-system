@@ -1,197 +1,252 @@
-// lib/data/services/sync_queue_dispatcher.dart
 import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
-import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
-
+import 'package:flutter/foundation.dart';
 import '../local/database.dart';
 import '../models/sync_envelope_dto.dart';
 
 class SyncDispatchResult {
-  final int totalDispatched;
-  final int rawBytes;
-  final int compressedBytes;
-  final double compressionRatio;
   final bool isSuccess;
+  final int recordsDispatched;
+  final double compressionRatio;
+  final int latencyMs;
   final String? errorMessage;
 
   const SyncDispatchResult({
-    required this.totalDispatched,
-    required this.rawBytes,
-    required this.compressedBytes,
-    required this.compressionRatio,
     required this.isSuccess,
+    this.recordsDispatched = 0,
+    this.compressionRatio = 1.0,
+    this.latencyMs = 0,
     this.errorMessage,
   });
-
-  factory SyncDispatchResult.empty() => const SyncDispatchResult(
-        totalDispatched: 0,
-        rawBytes: 0,
-        compressedBytes: 0,
-        compressionRatio: 0.0,
-        isSuccess: true,
-      );
-
-  factory SyncDispatchResult.failure(String message, {int count = 0}) =>
-      SyncDispatchResult(
-        totalDispatched: count,
-        rawBytes: 0,
-        compressedBytes: 0,
-        compressionRatio: 0.0,
-        isSuccess: false,
-        errorMessage: message,
-      );
 }
 
 class SyncQueueDispatcher {
-  static const String defaultEndpoint = 'https://api.pintig.health/api/v1/sync/batch';
-  static const String tenantId = 'ph_biliran_naval';
-  static const String barangayId = 'brgy_pi_garcia';
-  static const String clientVersion = '1.0.0+1';
-  static const int maxBatchLimit = 100;
-  static const int maxRetryThreshold = 5;
-
   final AppDatabase db;
-  final http.Client httpClient;
   final String deviceId;
-  final String endpointUrl;
-  final Uuid _uuid = const Uuid();
+  final String tenantId;
+  final String barangayId;
+  final String projectId;
+  final String apiKey;
 
   SyncQueueDispatcher({
     required this.db,
-    http.Client? client,
     required this.deviceId,
-    this.endpointUrl = defaultEndpoint,
-  }) : httpClient = client ?? http.Client();
+    this.tenantId = 'ph_biliran_naval',
+    this.barangayId = 'brgy_pi_garcia',
+    this.projectId = 'pintig-219',
+    this.apiKey = 'AIzaSyD-8cINNdnwGzmunFDYvLvCNuqrCyqGmvA',
+  });
 
   Future<SyncDispatchResult> dispatchPendingQueue() async {
-    // 1. Fetch pending records up to batch ceiling
-    final pendingRecords = await (db.select(db.syncQueue)
-          ..where((tbl) => tbl.syncStatus.equals('PENDING'))
-          ..orderBy([(tbl) => OrderingTerm.asc(tbl.createdAt)])
-          ..limit(maxBatchLimit))
-        .get();
+    final client = HttpClient();
+    final stopwatch = Stopwatch()..start();
+    int dispatchedCount = 0;
 
-    if (pendingRecords.isEmpty) {
-      return SyncDispatchResult.empty();
-    }
-
-    final recordIds = pendingRecords.map((r) => r.queueId).toList();
-
-    // 2. Atomically transition records to IN_FLIGHT
-    await (db.update(db.syncQueue)..where((tbl) => tbl.queueId.isIn(recordIds))).write(
-      const SyncQueueCompanion(
-        syncStatus: Value('IN_FLIGHT'),
-      ),
-    );
-
-    // 3. Construct canonical SyncPayloadEnvelopeDto
-    final List<DemographicMutationDto> demographics = [];
-    final List<ClinicalEncounterDto> encounters = [];
-
-    for (final row in pendingRecords) {
-      final decodedJson = jsonDecode(row.payloadJson) as Map<String, dynamic>;
-
-      if (row.entityType == 'ENCOUNTER') {
-        encounters.add(ClinicalEncounterDto.fromJson(decodedJson));
-      } else if (row.entityType == 'HOUSEHOLD' || row.entityType == 'PATIENT') {
-        demographics.add(DemographicMutationDto.fromJson(decodedJson));
-      }
-    }
-
-    final envelope = SyncPayloadEnvelopeDto(
-      syncBatchId: _uuid.v4(),
-      deviceId: deviceId,
-      tenantId: tenantId,
-      barangayId: barangayId,
-      clientVersion: clientVersion,
-      dispatchedAt: DateTime.now().toUtc().toIso8601String(),
-      payloadCount: demographics.length + encounters.length,
-      demographicMutations: demographics,
-      clinicalEncounters: encounters,
-    );
-
-    // 4. Serialize & Gzip Compress Payload
-    final rawJsonString = jsonEncode(envelope.toJson());
-    final rawBytes = utf8.encode(rawJsonString);
-    final compressedBytes = gzip.encode(rawBytes);
-
-    final compressionRatio = 1.0 - (compressedBytes.length / (rawBytes.isEmpty ? 1 : rawBytes.length));
-
-    // 5. Dispatch via HTTPS POST
     try {
-      final response = await httpClient.post(
-        Uri.parse(endpointUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Encoding': 'gzip',
-          'Accept-Encoding': 'gzip',
-          'X-Pintig-Device-ID': deviceId,
-          'X-Pintig-Tenant-ID': tenantId,
-          'X-Pintig-Barangay-ID': barangayId,
-        },
-        body: compressedBytes,
-      );
+      final pendingRows = await db.customSelect(
+        "SELECT rowid AS _sqlite_rowid, * FROM sync_queue WHERE sync_status = 'PENDING' ORDER BY created_at ASC",
+      ).get();
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        // 6. On HTTP 200 OK: Mark SYNCED and stamp synced_at (triggers 90-day retention prune)
-        final nowIso = DateTime.now().toUtc().toIso8601String();
-        await db.transaction(() async {
-          for (final id in recordIds) {
-            await (db.update(db.syncQueue)..where((tbl) => tbl.queueId.equals(id))).write(
-              SyncQueueCompanion(
-                syncStatus: const Value('SYNCED'),
-                syncedAt: Value(nowIso),
-              ),
+      if (pendingRows.isEmpty) {
+        stopwatch.stop();
+        debugPrint('[PINTIG SYNC] Queue is empty. 0 pending records.');
+        return const SyncDispatchResult(
+          isSuccess: true,
+          recordsDispatched: 0,
+          compressionRatio: 1.0,
+          latencyMs: 0,
+        );
+      }
+
+      debugPrint('[PINTIG SYNC] Found ${pendingRows.length} pending record(s). Processing dispatch...');
+
+      for (final row in pendingRows) {
+        final data = row.data;
+
+        final rawPayload = data['payload_json'] ??
+            data['payload'] ??
+            data['envelope_json'];
+
+        if (rawPayload == null) {
+          debugPrint('[PINTIG SYNC WARN] Skipping row with null payload.');
+          continue;
+        }
+
+        final Map<String, dynamic> decoded = rawPayload is String
+            ? jsonDecode(rawPayload) as Map<String, dynamic>
+            : Map<String, dynamic>.from(rawPayload as Map);
+
+        List<Map<String, dynamic>> encountersToPush = [];
+
+        if (decoded.containsKey('clinical_encounters') &&
+            decoded['clinical_encounters'] is List) {
+          for (final item in decoded['clinical_encounters'] as List) {
+            encountersToPush.add(Map<String, dynamic>.from(item as Map));
+          }
+        } else {
+          encountersToPush.add(decoded);
+        }
+
+        for (final encMap in encountersToPush) {
+          final encounterUuid = (encMap['encounter_uuid'] ??
+              encMap['encounterUuid'] ??
+              encMap['id'] ??
+              'enc-${DateTime.now().millisecondsSinceEpoch}') as String;
+
+          final patientUuid = (encMap['patient_uuid'] ??
+              encMap['patientUuid'] ??
+              'unknown-patient') as String;
+
+          final bhwId = (encMap['bhw_id'] ?? encMap['bhwId'] ?? 'BHW-NAV-01') as String;
+          final encounterType = (encMap['encounter_type'] ?? encMap['encounterType'] ?? 'MATERNAL_CARE') as String;
+          final timestamp = (encMap['timestamp'] ?? DateTime.now().toUtc().toIso8601String()) as String;
+          final triageRiskLevel = (encMap['triage_risk_level'] ?? encMap['risk_level'] ?? 'NORMAL').toString().toUpperCase();
+
+          final clinicalDataRaw = encMap['clinical_data'] ?? encMap['clinicalData'] ?? {};
+          final clinicalDataMap = clinicalDataRaw is Map
+              ? Map<String, dynamic>.from(clinicalDataRaw)
+              : <String, dynamic>{};
+
+          // 1. Write encounter document to Firestore
+          final encounterFields = {
+            'encounter_uuid': encounterUuid,
+            'patient_uuid': patientUuid,
+            'bhw_id': bhwId,
+            'encounter_type': encounterType,
+            'timestamp': timestamp,
+            'triage_risk_level': triageRiskLevel,
+            'clinical_data': jsonEncode(clinicalDataMap),
+            'device_id': deviceId,
+            'synced_at': DateTime.now().toUtc().toIso8601String(),
+          };
+
+          final encounterOk = await _patchDocument(
+            client: client,
+            collectionPath: 'encounters',
+            documentId: encounterUuid,
+            fields: encounterFields,
+          );
+
+          if (!encounterOk) {
+            throw HttpException('Firestore rejected encounter $encounterUuid');
+          }
+
+          // 2. Write triage alert document if risk is elevated
+          if (triageRiskLevel == 'HIGH' || triageRiskLevel == 'MODERATE') {
+            final systolic = clinicalDataMap['systolic_bp'] ?? 'N/A';
+            final diastolic = clinicalDataMap['diastolic_bp'] ?? 'N/A';
+
+            final alertFields = {
+              'alert_uuid': encounterUuid,
+              'encounter_uuid': encounterUuid,
+              'patient_uuid': patientUuid,
+              'bhw_id': bhwId,
+              'encounter_type': encounterType,
+              'risk_level': triageRiskLevel,
+              'status': 'PENDING',
+              'clinical_summary': 'Blood Pressure: $systolic/$diastolic mmHg (CDSS Flagged $triageRiskLevel)',
+              'triggered_at': timestamp,
+            };
+
+            await _patchDocument(
+              client: client,
+              collectionPath: 'triage_alerts',
+              documentId: encounterUuid,
+              fields: alertFields,
             );
           }
-        });
 
-        return SyncDispatchResult(
-          totalDispatched: envelope.payloadCount,
-          rawBytes: rawBytes.length,
-          compressedBytes: compressedBytes.length,
-          compressionRatio: (compressionRatio * 100).roundToDouble() / 100,
-          isSuccess: true,
-        );
-      } else {
-        await _rollbackInFlightRecords(
-          recordIds,
-          'Server rejected payload with status code ${response.statusCode}',
-        );
-        return SyncDispatchResult.failure(
-          'HTTP ${response.statusCode}: ${response.body}',
-          count: envelope.payloadCount,
-        );
+          dispatchedCount++;
+        }
       }
-    } catch (e) {
-      await _rollbackInFlightRecords(recordIds, e.toString());
-      return SyncDispatchResult.failure(
-        'Transport failure: ${e.toString()}',
-        count: envelope.payloadCount,
+
+      // 3. Mark all pending rows as SYNCED and notify Drift reactive stream
+      final syncTable = db.allTables.cast<TableInfo?>().firstWhere(
+        (t) => t?.actualTableName == 'sync_queue',
+        orElse: () => null,
       );
+
+      await db.customUpdate(
+        "UPDATE sync_queue SET sync_status = 'SYNCED' WHERE sync_status = 'PENDING'",
+        updates: syncTable != null ? {syncTable} : {},
+      );
+
+      stopwatch.stop();
+      debugPrint('[PINTIG SYNC] Successfully synced $dispatchedCount record(s) to Firestore.');
+      return SyncDispatchResult(
+        isSuccess: true,
+        recordsDispatched: dispatchedCount,
+        compressionRatio: 1.0,
+        latencyMs: stopwatch.elapsedMilliseconds,
+      );
+    } catch (e) {
+      stopwatch.stop();
+      debugPrint('[PINTIG SYNC ERROR] Push failed: $e');
+      return SyncDispatchResult(
+        isSuccess: false,
+        recordsDispatched: dispatchedCount,
+        errorMessage: e.toString(),
+        compressionRatio: 1.0,
+        latencyMs: stopwatch.elapsedMilliseconds,
+      );
+    } finally {
+      client.close();
     }
   }
 
-  Future<void> _rollbackInFlightRecords(List<int> recordIds, String reason) async {
-    await db.transaction(() async {
-      for (final id in recordIds) {
-        final existing = await (db.select(db.syncQueue)..where((tbl) => tbl.queueId.equals(id)))
-            .getSingleOrNull();
+  Future<bool> _patchDocument({
+    required HttpClient client,
+    required String collectionPath,
+    required String documentId,
+    required Map<String, dynamic> fields,
+  }) async {
+    try {
+      final maskParams = fields.keys.map((k) => 'updateMask.fieldPaths=$k').join('&');
+      final urlStr =
+          'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/tenants/$tenantId/barangays/$barangayId/$collectionPath/$documentId?$maskParams&key=$apiKey';
 
-        if (existing != null) {
-          final nextRetry = existing.retryCount + 1;
-          final nextStatus = nextRetry >= maxRetryThreshold ? 'FAILED' : 'PENDING';
+      final request = await client.patchUrl(Uri.parse(urlStr));
+      request.headers.contentType = ContentType.json;
 
-          await (db.update(db.syncQueue)..where((tbl) => tbl.queueId.equals(id))).write(
-            SyncQueueCompanion(
-              syncStatus: Value(nextStatus),
-              retryCount: Value(nextRetry),
-            ),
-          );
-        }
+      final body = {
+        'fields': _encodeFirestoreFields(fields),
+      };
+
+      request.write(jsonEncode(body));
+      final response = await request.close();
+      final responseBody = await utf8.decoder.bind(response).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('[PINTIG FIRESTORE OK] Written to $collectionPath/$documentId');
+        return true;
+      } else {
+        debugPrint('[PINTIG FIRESTORE ERROR ${response.statusCode}] $responseBody');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('[PINTIG HTTP ERROR] $e');
+      return false;
+    }
+  }
+
+  Map<String, dynamic> _encodeFirestoreFields(Map<String, dynamic> raw) {
+    final fields = <String, dynamic>{};
+    raw.forEach((key, val) {
+      if (val == null) {
+        fields[key] = {'nullValue': null};
+      } else if (val is String) {
+        fields[key] = {'stringValue': val};
+      } else if (val is int) {
+        fields[key] = {'integerValue': val.toString()};
+      } else if (val is double) {
+        fields[key] = {'doubleValue': val};
+      } else if (val is bool) {
+        fields[key] = {'booleanValue': val};
+      } else {
+        fields[key] = {'stringValue': val.toString()};
       }
     });
+    return fields;
   }
 }
