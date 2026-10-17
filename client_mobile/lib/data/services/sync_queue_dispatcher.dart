@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import '../local/database.dart';
-import '../models/sync_envelope_dto.dart';
 
 class SyncDispatchResult {
   final bool isSuccess;
@@ -99,7 +98,7 @@ class SyncQueueDispatcher {
               'unknown-patient') as String;
 
           final bhwId = (encMap['bhw_id'] ?? encMap['bhwId'] ?? 'BHW-NAV-01') as String;
-          final encounterType = (encMap['encounter_type'] ?? encMap['encounterType'] ?? 'MATERNAL_CARE') as String;
+          final encounterType = (encMap['encounter_type'] ?? encMap['encounterType'] ?? 'MATERNAL_CARE').toString().toUpperCase();
           final timestamp = (encMap['timestamp'] ?? DateTime.now().toUtc().toIso8601String()) as String;
           final triageRiskLevel = (encMap['triage_risk_level'] ?? encMap['risk_level'] ?? 'NORMAL').toString().toUpperCase();
 
@@ -108,7 +107,7 @@ class SyncQueueDispatcher {
               ? Map<String, dynamic>.from(clinicalDataRaw)
               : <String, dynamic>{};
 
-          // 1. Write encounter document to Firestore
+          // 1. Write raw encounter document to Firestore
           final encounterFields = {
             'encounter_uuid': encounterUuid,
             'patient_uuid': patientUuid,
@@ -132,10 +131,13 @@ class SyncQueueDispatcher {
             throw HttpException('Firestore rejected encounter $encounterUuid');
           }
 
-          // 2. Write triage alert document if risk is elevated
+          // 2. Write dynamic triage alert if risk is HIGH or MODERATE
           if (triageRiskLevel == 'HIGH' || triageRiskLevel == 'MODERATE') {
-            final systolic = clinicalDataMap['systolic_bp'] ?? 'N/A';
-            final diastolic = clinicalDataMap['diastolic_bp'] ?? 'N/A';
+            final summaryText = _buildClinicalSummary(
+              encounterType: encounterType,
+              riskLevel: triageRiskLevel,
+              clinicalData: clinicalDataMap,
+            );
 
             final alertFields = {
               'alert_uuid': encounterUuid,
@@ -145,7 +147,7 @@ class SyncQueueDispatcher {
               'encounter_type': encounterType,
               'risk_level': triageRiskLevel,
               'status': 'PENDING',
-              'clinical_summary': 'Blood Pressure: $systolic/$diastolic mmHg (CDSS Flagged $triageRiskLevel)',
+              'clinical_summary': summaryText,
               'triggered_at': timestamp,
             };
 
@@ -157,11 +159,20 @@ class SyncQueueDispatcher {
             );
           }
 
+          // 3. Atomically increment monthly KPI aggregates on Firestore
+          final yearMonth = timestamp.length >= 7 ? timestamp.substring(0, 7) : '2026-10';
+          await _incrementMonthlyAggregates(
+            client: client,
+            yearMonth: yearMonth,
+            encounterType: encounterType,
+            riskLevel: triageRiskLevel,
+          );
+
           dispatchedCount++;
         }
       }
 
-      // 3. Mark all pending rows as SYNCED and notify Drift reactive stream
+      // 4. Mark all pending rows as SYNCED and notify Drift stream
       final syncTable = db.allTables.cast<TableInfo?>().firstWhere(
         (t) => t?.actualTableName == 'sync_queue',
         orElse: () => null,
@@ -192,6 +203,137 @@ class SyncQueueDispatcher {
       );
     } finally {
       client.close();
+    }
+  }
+
+  /// Builds module-specific clinical summaries for the Web Triage Feed.
+  String _buildClinicalSummary({
+    required String encounterType,
+    required String riskLevel,
+    required Map<String, dynamic> clinicalData,
+  }) {
+    if (encounterType.contains('MATERNAL')) {
+      final sys = clinicalData['systolic_bp'] ?? 'N/A';
+      final dia = clinicalData['diastolic_bp'] ?? 'N/A';
+      return 'Maternal Care: BP $sys/$dia mmHg (CDSS Flagged $riskLevel)';
+    } else if (encounterType.contains('NUTRITION') || encounterType.contains('OPT')) {
+      final weight = clinicalData['weight_kg'] ?? clinicalData['weight'] ?? 'N/A';
+      final height = clinicalData['height_cm'] ?? clinicalData['length_cm'] ?? 'N/A';
+      final zScore = clinicalData['wfl_z_score'] ?? clinicalData['z_score'] ?? '';
+      final zText = zScore.toString().isNotEmpty ? ' | Z-Score: $zScore' : '';
+      return 'OPT+ Nutrition: Wt ${weight}kg, Ht ${height}cm$zText (CDSS Flagged $riskLevel)';
+    } else if (encounterType.contains('IMMUNIZATION') || encounterType.contains('EPI')) {
+      final vaccine = clinicalData['vaccine_code'] ?? clinicalData['vaccine_name'] ?? 'EPI Vaccine';
+      final dose = clinicalData['dose_number'] ?? clinicalData['dose'] ?? '1';
+      return 'Immunization: $vaccine (Dose $dose) - Flagged $riskLevel';
+    }
+    return '$encounterType Encounter (CDSS Flagged $riskLevel)';
+  }
+
+  /// Atomically increments monthly KPI counters in aggregates/{yearMonth}.
+  Future<void> _incrementMonthlyAggregates({
+    required HttpClient client,
+    required String yearMonth,
+    required String encounterType,
+    required String riskLevel,
+  }) async {
+    try {
+      final commitUrl = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents:commit?key=$apiKey',
+      );
+
+      final docPath =
+          'projects/$projectId/databases/(default)/documents/tenants/$tenantId/barangays/$barangayId/aggregates/$yearMonth';
+
+      final List<Map<String, dynamic>> fieldTransforms = [
+        {
+          'fieldPath': 'total_encounters',
+          'increment': {'integerValue': '1'}
+        },
+      ];
+
+      if (encounterType.contains('MATERNAL')) {
+        fieldTransforms.add({
+          'fieldPath': 'maternal_care_count',
+          'increment': {'integerValue': '1'}
+        });
+        fieldTransforms.add({
+          'fieldPath': 'maternal_encounters',
+          'increment': {'integerValue': '1'}
+        });
+        if (riskLevel == 'HIGH' || riskLevel == 'MODERATE') {
+          fieldTransforms.add({
+            'fieldPath': 'high_risk_maternal_count',
+            'increment': {'integerValue': '1'}
+          });
+          fieldTransforms.add({
+            'fieldPath': 'high_risk_maternal',
+            'increment': {'integerValue': '1'}
+          });
+        }
+      } else if (encounterType.contains('NUTRITION') || encounterType.contains('OPT')) {
+        fieldTransforms.add({
+          'fieldPath': 'nutrition_opt_count',
+          'increment': {'integerValue': '1'}
+        });
+        fieldTransforms.add({
+          'fieldPath': 'opt_encounters',
+          'increment': {'integerValue': '1'}
+        });
+        if (riskLevel == 'HIGH' || riskLevel == 'MODERATE') {
+          fieldTransforms.add({
+            'fieldPath': 'severe_wasting_count',
+            'increment': {'integerValue': '1'}
+          });
+          fieldTransforms.add({
+            'fieldPath': 'high_risk_nutrition_count',
+            'increment': {'integerValue': '1'}
+          });
+        }
+      } else if (encounterType.contains('IMMUNIZATION') || encounterType.contains('EPI')) {
+        fieldTransforms.add({
+          'fieldPath': 'immunization_count',
+          'increment': {'integerValue': '1'}
+        });
+        fieldTransforms.add({
+          'fieldPath': 'immunization_encounters',
+          'increment': {'integerValue': '1'}
+        });
+        fieldTransforms.add({
+          'fieldPath': 'fic_count',
+          'increment': {'integerValue': '1'}
+        });
+      }
+
+      if (riskLevel == 'HIGH' || riskLevel == 'MODERATE') {
+        fieldTransforms.add({
+          'fieldPath': 'active_triage_alerts',
+          'increment': {'integerValue': '1'}
+        });
+      }
+
+      final payload = {
+        'writes': [
+          {
+            'transform': {
+              'document': docPath,
+              'fieldTransforms': fieldTransforms,
+            }
+          }
+        ]
+      };
+
+      final request = await client.postUrl(commitUrl);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(payload));
+      final response = await request.close();
+      await utf8.decoder.bind(response).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('[PINTIG AGGREGATES OK] Incremented KPIs for $yearMonth');
+      }
+    } catch (e) {
+      debugPrint('[PINTIG AGGREGATES WARN] Failed to increment KPIs: $e');
     }
   }
 
