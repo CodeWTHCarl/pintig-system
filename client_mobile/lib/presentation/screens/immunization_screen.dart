@@ -19,6 +19,7 @@ class ImmunizationScreen extends ConsumerStatefulWidget {
 class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _lotController = TextEditingController();
+  final TextEditingController _aefiNotesController = TextEditingController();
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
 
   static const List<String> _antigens = ['BCG', 'HEPB', 'PENTA', 'OPV', 'IPV', 'PCV', 'MCV'];
@@ -33,6 +34,7 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
   void dispose() {
     _dateController.dispose();
     _lotController.dispose();
+    _aefiNotesController.dispose();
     super.dispose();
   }
 
@@ -93,6 +95,26 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
                 message: formState.intervalViolationMessage!,
                 backgroundColor: PintigTokens.clinicalRed,
                 icon: Icons.dangerous_outlined,
+              ),
+              const SizedBox(height: 16.0),
+            ],
+
+            // AEFI High-Risk CDSS Alert Banner
+            if (formState.aefiReported) ...[
+              const PintigCdssBanner(
+                title: 'High Risk: Suspected AEFI Reaction',
+                message:
+                    'Adverse Event Following Immunization (High Fever >=38.5°C, convulsion, or severe local reaction). Immediate RHU Midwife/MHO referral required.',
+                backgroundColor: PintigTokens.clinicalRed,
+                icon: Icons.warning_amber_rounded,
+              ),
+              const SizedBox(height: 16.0),
+            ] else ...[
+              const PintigCdssBanner(
+                title: 'Routine EPI Administration',
+                message: 'No adverse post-vaccination reactions flagged. Cleared for standard dose logging.',
+                backgroundColor: PintigTokens.clinicalGreen,
+                icon: Icons.verified_user_outlined,
               ),
               const SizedBox(height: 16.0),
             ],
@@ -171,6 +193,43 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
               controller: _lotController,
               onChanged: notifier.setLotNumber,
             ),
+            const SizedBox(height: 16.0),
+
+            // AEFI / Severe Fever Toggle
+            Container(
+              decoration: BoxDecoration(
+                color: formState.aefiReported ? const Color(0xFFFFF1F2) : Colors.white,
+                borderRadius: BorderRadius.circular(8.0),
+                border: Border.all(
+                  color: formState.aefiReported ? PintigTokens.clinicalRed : Colors.grey.shade300,
+                  width: 1.5,
+                ),
+              ),
+              child: SwitchListTile(
+                title: const Text(
+                  'Adverse Event / High Fever (AEFI)',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.0),
+                ),
+                subtitle: const Text(
+                  'Toggle ON if child exhibits fever >=38.5°C, abscess, or severe reaction',
+                  style: TextStyle(fontSize: 13.0),
+                ),
+                value: formState.aefiReported,
+                activeColor: PintigTokens.clinicalRed,
+                onChanged: notifier.setAefiReported,
+              ),
+            ),
+
+            if (formState.aefiReported) ...[
+              const SizedBox(height: 12.0),
+              PintigTextField(
+                label: 'Observed AEFI Symptoms / Reaction Notes',
+                hint: 'e.g. Fever 39.1°C and injection site swelling',
+                controller: _aefiNotesController,
+                onChanged: notifier.setAefiSymptoms,
+              ),
+            ],
+
             const SizedBox(height: 24.0),
 
             // Save Record

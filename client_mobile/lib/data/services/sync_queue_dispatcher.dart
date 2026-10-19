@@ -212,22 +212,28 @@ class SyncQueueDispatcher {
     required String riskLevel,
     required Map<String, dynamic> clinicalData,
   }) {
+    final patientPrefix = clinicalData['patient_name'] != null
+        ? '${clinicalData['patient_name']} • '
+        : '';
+
     if (encounterType.contains('MATERNAL')) {
       final sys = clinicalData['systolic_bp'] ?? 'N/A';
       final dia = clinicalData['diastolic_bp'] ?? 'N/A';
-      return 'Maternal Care: BP $sys/$dia mmHg (CDSS Flagged $riskLevel)';
+      return '${patientPrefix}Maternal Care: BP $sys/$dia mmHg (Preeclampsia Risk - $riskLevel)';
     } else if (encounterType.contains('NUTRITION') || encounterType.contains('OPT')) {
       final weight = clinicalData['weight_kg'] ?? clinicalData['weight'] ?? 'N/A';
       final height = clinicalData['height_cm'] ?? clinicalData['length_cm'] ?? 'N/A';
-      final zScore = clinicalData['wfl_z_score'] ?? clinicalData['z_score'] ?? '';
-      final zText = zScore.toString().isNotEmpty ? ' | Z-Score: $zScore' : '';
-      return 'OPT+ Nutrition: Wt ${weight}kg, Ht ${height}cm$zText (CDSS Flagged $riskLevel)';
+      final whz = clinicalData['whz'] ?? clinicalData['wfl_z_score'] ?? '';
+      final status = clinicalData['nutritional_status'] ?? 'SAM';
+      final zText = whz.toString().isNotEmpty ? ' | WHZ: $whz ($status)' : ' ($status)';
+      return '${patientPrefix}OPT+ Nutrition: Wt ${weight}kg, Ht ${height}cm$zText';
     } else if (encounterType.contains('IMMUNIZATION') || encounterType.contains('EPI')) {
-      final vaccine = clinicalData['vaccine_code'] ?? clinicalData['vaccine_name'] ?? 'EPI Vaccine';
-      final dose = clinicalData['dose_number'] ?? clinicalData['dose'] ?? '1';
-      return 'Immunization: $vaccine (Dose $dose) - Flagged $riskLevel';
+      final vaccine = clinicalData['antigen_code'] ?? clinicalData['vaccine_code'] ?? 'EPI Vaccine';
+      final dose = clinicalData['dose_number'] ?? '1';
+      final notes = clinicalData['aefi_notes'] != null ? ' - ${clinicalData['aefi_notes']}' : '';
+      return '${patientPrefix}AEFI Alert: $vaccine (Dose $dose)$notes';
     }
-    return '$encounterType Encounter (CDSS Flagged $riskLevel)';
+    return '$patientPrefix$encounterType Encounter (CDSS Flagged $riskLevel)';
   }
 
   /// Atomically increments monthly KPI counters in aggregates/{yearMonth}.

@@ -8,6 +8,8 @@ class ImmunizationFormState {
   final int doseNumber;
   final DateTime administrationDate;
   final String? lotNumber;
+  final bool aefiReported;
+  final String? aefiSymptoms;
   final String? intervalViolationMessage;
   final bool isSubmitting;
   final String? submissionError;
@@ -18,6 +20,8 @@ class ImmunizationFormState {
     this.doseNumber = 1,
     required this.administrationDate,
     this.lotNumber,
+    this.aefiReported = false,
+    this.aefiSymptoms,
     this.intervalViolationMessage,
     this.isSubmitting = false,
     this.submissionError,
@@ -26,11 +30,15 @@ class ImmunizationFormState {
 
   bool get isValid => intervalViolationMessage == null;
 
+  String get triageRiskLevel => aefiReported ? 'HIGH' : 'NORMAL';
+
   ImmunizationFormState copyWith({
     String? antigenCode,
     int? doseNumber,
     DateTime? administrationDate,
     String? lotNumber,
+    bool? aefiReported,
+    String? aefiSymptoms,
     String? intervalViolationMessage,
     bool clearIntervalError = false,
     bool isSubmitting = false,
@@ -42,6 +50,8 @@ class ImmunizationFormState {
       doseNumber: doseNumber ?? this.doseNumber,
       administrationDate: administrationDate ?? this.administrationDate,
       lotNumber: lotNumber ?? this.lotNumber,
+      aefiReported: aefiReported ?? this.aefiReported,
+      aefiSymptoms: aefiSymptoms ?? this.aefiSymptoms,
       intervalViolationMessage: clearIntervalError
           ? null
           : (intervalViolationMessage ?? this.intervalViolationMessage),
@@ -88,8 +98,15 @@ class ImmunizationIntakeNotifier extends StateNotifier<ImmunizationFormState> {
     state = state.copyWith(lotNumber: lot);
   }
 
+  void setAefiReported(bool value) {
+    state = state.copyWith(aefiReported: value);
+  }
+
+  void setAefiSymptoms(String? symptoms) {
+    state = state.copyWith(aefiSymptoms: symptoms);
+  }
+
   void _validateInterval() {
-    // 28-day spacing rule for multidose vaccines: PENTA, OPV, IPV, PCV
     if (['PENTA', 'OPV', 'IPV', 'PCV'].contains(state.antigenCode) && state.doseNumber > 1) {
       final prevDoseNumber = state.doseNumber - 1;
       final prevDose = _history
@@ -126,6 +143,9 @@ class ImmunizationIntakeNotifier extends StateNotifier<ImmunizationFormState> {
         doseNumber: state.doseNumber,
         administrationDate: state.administrationDate.toIso8601String().substring(0, 10),
         lotNumber: state.lotNumber,
+        triageRiskLevel: state.triageRiskLevel,
+        aefiReported: state.aefiReported,
+        aefiNotes: state.aefiSymptoms,
       );
 
       state = state.copyWith(isSubmitting: false, isSuccess: true);

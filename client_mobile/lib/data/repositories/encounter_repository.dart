@@ -25,6 +25,8 @@ class EncounterRepository {
     required double maternalWeightKg,
     required double? fundicHeightCm,
     required bool ironFolicGiven,
+    String? patientName,
+    String? sitioPurok,
     String? clinicalNotes,
   }) async {
     final encounterUuid = _uuid.v4();
@@ -40,6 +42,8 @@ class EncounterRepository {
       'weight_kg': maternalWeightKg,
       'fundic_height_cm': fundicHeightCm,
       'iron_folic_given': ironFolicGiven,
+      if (patientName != null && patientName.isNotEmpty) 'patient_name': patientName,
+      if (sitioPurok != null && sitioPurok.isNotEmpty) 'sitio_purok': sitioPurok,
     };
 
     final syncEnvelopeEncounter = {
@@ -111,6 +115,8 @@ class EncounterRepository {
     required double hazScore,
     required double wazScore,
     required String nutritionalStatus,
+    String? patientName,
+    String? sitioPurok,
     String? clinicalNotes,
   }) async {
     final encounterUuid = _uuid.v4();
@@ -122,10 +128,12 @@ class EncounterRepository {
       'height_cm': heightCm,
       'posture': posture,
       'edema': edema,
-      'whz': whzScore,
-      'haz': hazScore,
-      'waz': wazScore,
+      'whz': double.parse(whzScore.toStringAsFixed(2)),
+      'haz': double.parse(hazScore.toStringAsFixed(2)),
+      'waz': double.parse(wazScore.toStringAsFixed(2)),
       'nutritional_status': nutritionalStatus,
+      if (patientName != null && patientName.isNotEmpty) 'patient_name': patientName,
+      if (sitioPurok != null && sitioPurok.isNotEmpty) 'sitio_purok': sitioPurok,
     };
 
     final syncEnvelopeEncounter = {
@@ -191,6 +199,11 @@ class EncounterRepository {
     required int doseNumber,
     required String administrationDate,
     required String? lotNumber,
+    String triageRiskLevel = 'NORMAL',
+    bool aefiReported = false,
+    String? aefiNotes,
+    String? patientName,
+    String? sitioPurok,
     String? clinicalNotes,
   }) async {
     final encounterUuid = _uuid.v4();
@@ -201,6 +214,10 @@ class EncounterRepository {
       'dose_number': doseNumber,
       'administration_date': administrationDate,
       'lot_number': lotNumber,
+      'aefi_reported': aefiReported,
+      if (aefiNotes != null && aefiNotes.isNotEmpty) 'aefi_notes': aefiNotes,
+      if (patientName != null && patientName.isNotEmpty) 'patient_name': patientName,
+      if (sitioPurok != null && sitioPurok.isNotEmpty) 'sitio_purok': sitioPurok,
     };
 
     final syncEnvelopeEncounter = {
@@ -209,7 +226,7 @@ class EncounterRepository {
       'bhw_id': bhwUserId,
       'encounter_type': 'IMMUNIZATION',
       'timestamp': isoTimestamp,
-      'triage_risk_level': 'NORMAL',
+      'triage_risk_level': triageRiskLevel,
       'clinical_data': clinicalDataPayload,
     };
 
@@ -221,8 +238,8 @@ class EncounterRepository {
               bhwUserId: Value(bhwUserId),
               encounterType: const Value('IMMUNIZATION'),
               encounterTimestamp: Value(isoTimestamp),
-              triageRiskLevel: const Value('NORMAL'),
-              clinicalNotes: Value(clinicalNotes),
+              triageRiskLevel: Value(triageRiskLevel),
+              clinicalNotes: Value(clinicalNotes ?? aefiNotes),
               createdAt: Value(isoTimestamp),
             ),
           );
