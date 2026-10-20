@@ -1,5 +1,16 @@
 import ExcelJS from 'exceljs';
 
+export interface SyncedEncounterRow {
+  encounterUuid: string;
+  timestamp: string;
+  encounterType: string;
+  patientName: string;
+  sitioPurok: string;
+  riskLevel: string;
+  bhwId: string;
+  clinicalSummary: string;
+}
+
 export interface FhsisExportDataPayload {
   reportingYear: number;
   reportingMonth: string;
@@ -30,18 +41,19 @@ export interface FhsisExportDataPayload {
     moderatelyStunted: number;
     severelyWasted: number;
   };
+  liveSyncedEncounters?: SyncedEncounterRow[];
 }
 
 export class FhsisExportService {
   /**
-   * Generates and downloads the official DOH-FHSIS M1 (Maternal & Child Care)
-   * and M2 (Morbidity/Nutrition) monthly summary report spreadsheet.
+   * Generates and downloads the official DOH-FHSIS M1 (Maternal & Child Care),
+   * M2 (OPT+ Child Nutrition), and Live Edge Sync Registry workbook.
    */
   public static async generateFhsisMonthlyWorkbook(
     payload: FhsisExportDataPayload
   ): Promise<void> {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Project Pintig Cloud Ingestion Engine';
+    workbook.creator = 'Pintig Cloud Ingestion Engine';
     workbook.lastModifiedBy = 'MHO Naval';
     workbook.created = new Date();
     workbook.modified = new Date();
@@ -53,17 +65,15 @@ export class FhsisExportService {
       views: [{ showGridLines: true }],
     });
 
-    // Formatting widths
     m1Sheet.columns = [
-      { width: 8 },  // Line No
-      { width: 45 }, // Indicator Name
-      { width: 14 }, // Target Population
-      { width: 14 }, // Total Accomplishment
-      { width: 16 }, // % Accomplishment
-      { width: 28 }, // Interpretation / Clinical Remarks
+      { width: 8 },
+      { width: 45 },
+      { width: 14 },
+      { width: 14 },
+      { width: 16 },
+      { width: 28 },
     ];
 
-    // Official Header Banner
     m1Sheet.mergeCells('A1:F1');
     const headerTitle = m1Sheet.getCell('A1');
     headerTitle.value = 'DEPARTMENT OF HEALTH • FIELD HEALTH SERVICES INFORMATION SYSTEM (FHSIS)';
@@ -71,7 +81,7 @@ export class FhsisExportService {
     headerTitle.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF0F766E' }, // DOH Deep Teal
+      fgColor: { argb: 'FF0F766E' },
     };
     headerTitle.alignment = { horizontal: 'center', vertical: 'middle' };
     m1Sheet.getRow(1).height = 26;
@@ -83,7 +93,6 @@ export class FhsisExportService {
     subTitle.alignment = { horizontal: 'center', vertical: 'middle' };
     m1Sheet.getRow(2).height = 20;
 
-    // Metadata Block
     m1Sheet.getCell('A4').value = 'PROVINCE:';
     m1Sheet.getCell('B4').value = payload.province;
     m1Sheet.getCell('D4').value = 'MUNICIPALITY:';
@@ -101,7 +110,6 @@ export class FhsisExportService {
       m1Sheet.getCell(cell).font = { name: 'Arial', size: 9, bold: true };
     });
 
-    // Table Column Headers
     const colHeaders = [
       'NO.',
       'INDICATOR DESCRIPTION',
@@ -132,7 +140,6 @@ export class FhsisExportService {
       };
     }
 
-    // Indicator Data Rows
     const m1Rows = [
       {
         no: 1,
@@ -252,7 +259,7 @@ export class FhsisExportService {
     optTitle.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF15803D' }, // DOH Green
+      fgColor: { argb: 'FF15803D' },
     };
     optTitle.alignment = { horizontal: 'center', vertical: 'middle' };
     optSheet.getRow(1).height = 26;
@@ -315,6 +322,75 @@ export class FhsisExportService {
       }
       optRowIdx++;
     });
+
+    // ---------------------------------------------------------
+    // Worksheet 3: Live Edge Sync Registry (Firestore Encounters)
+    // ---------------------------------------------------------
+    if (payload.liveSyncedEncounters && payload.liveSyncedEncounters.length > 0) {
+      const logSheet = workbook.addWorksheet('Live Edge Sync Registry', {
+        views: [{ showGridLines: true }],
+      });
+
+      logSheet.columns = [
+        { width: 22 },
+        { width: 18 },
+        { width: 24 },
+        { width: 20 },
+        { width: 12 },
+        { width: 14 },
+        { width: 42 },
+      ];
+
+      logSheet.mergeCells('A1:G1');
+      const logTitle = logSheet.getCell('A1');
+      logTitle.value = 'PINTIG EDGE-TO-CLOUD VERIFIED FIELD ENCOUNTERS LOG (BRGY. P.I. GARCIA)';
+      logTitle.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      logTitle.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0284C7' },
+      };
+      logTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+      logSheet.getRow(1).height = 26;
+
+      const logHeadRow = logSheet.getRow(3);
+      logHeadRow.values = [
+        'TIMESTAMP (UTC)',
+        'TCL MODULE',
+        'PATIENT NAME',
+        'SITIO / PUROK',
+        'CDSS RISK',
+        'BHW OFFICER',
+        'CLINICAL SUMMARY / VITALS',
+      ];
+      for (let c = 1; c <= 7; c++) {
+        const cell = logHeadRow.getCell(c);
+        cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF1E293B' },
+        };
+      }
+
+      let logRowIdx = 4;
+      payload.liveSyncedEncounters.forEach((enc) => {
+        const r = logSheet.getRow(logRowIdx);
+        r.values = [
+          enc.timestamp,
+          enc.encounterType,
+          enc.patientName,
+          enc.sitioPurok,
+          enc.riskLevel,
+          enc.bhwId,
+          enc.clinicalSummary,
+        ];
+        for (let c = 1; c <= 7; c++) {
+          r.getCell(c).font = { name: 'Arial', size: 9 };
+        }
+        logRowIdx++;
+      });
+    }
 
     // Write file buffer and initiate browser download
     const buffer = await workbook.xlsx.writeBuffer();

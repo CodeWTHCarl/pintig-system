@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from './config/firebase';
 import { DashboardOverview } from './components/DashboardOverview';
 import { EpidemiologicalGisMap } from './components/EpidemiologicalGisMap';
-import { FhsisExportService } from './services/FhsisExportService';
+import { FhsisExportService, SyncedEncounterRow } from './services/FhsisExportService';
 import { LayoutDashboard, MapPin, FileSpreadsheet } from 'lucide-react';
+
+const TENANT_ID = 'ph_biliran_naval';
+const BARANGAY_ID = 'brgy_pi_garcia';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'map'>('dashboard');
@@ -11,6 +16,80 @@ export const App: React.FC = () => {
   const handleDownloadFhsis = async () => {
     setIsExporting(true);
     try {
+      // Query live synced encounters from Firestore to merge with Barangay baseline
+      const encountersSnap = await getDocs(
+        collection(db, `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/encounters`)
+      );
+
+      let syncedMaternal = 0;
+      let syncedMaternalHighRisk = 0;
+      let syncedIronFolic = 0;
+      let syncedBcg = 0;
+      let syncedHepb = 0;
+      let syncedPenta1 = 0;
+      let syncedPenta2 = 0;
+      let syncedOpv1 = 0;
+      let syncedOptTotal = 0;
+      let syncedOptNormal = 0;
+      let syncedOptStunted = 0;
+      let syncedOptWasted = 0;
+
+      const liveRows: SyncedEncounterRow[] = [];
+
+      encountersSnap.forEach((docSnap) => {
+        const d = docSnap.data();
+        let clinical: Record<string, any> = {};
+        if (typeof d.clinical_data === 'string') {
+          try {
+            clinical = JSON.parse(d.clinical_data);
+          } catch {
+            clinical = {};
+          }
+        } else if (d.clinical_data && typeof d.clinical_data === 'object') {
+          clinical = d.clinical_data;
+        }
+
+        const type = String(d.encounter_type || '').toUpperCase();
+        const risk = String(d.triage_risk_level || 'NORMAL').toUpperCase();
+        const patientName = String(d.patient_name || clinical.patient_name || 'Verified Patient');
+        const sitioPurok = String(d.sitio_purok || clinical.sitio_purok || 'Purok 1 (Centro)');
+        let summary = '';
+
+        if (type.includes('MATERNAL')) {
+          syncedMaternal++;
+          if (risk === 'HIGH' || risk === 'MODERATE') syncedMaternalHighRisk++;
+          if (clinical.iron_folic_given) syncedIronFolic++;
+          summary = `BP ${clinical.systolic_bp ?? 'N/A'}/${clinical.diastolic_bp ?? 'N/A'} mmHg, Wt ${clinical.weight_kg ?? 'N/A'}kg`;
+        } else if (type.includes('IMMUNIZATION') || type.includes('EPI')) {
+          const antigen = String(clinical.antigen_code || '').toUpperCase();
+          const dose = Number(clinical.dose_number || 1);
+          if (antigen === 'BCG') syncedBcg++;
+          else if (antigen === 'HEPB') syncedHepb++;
+          else if (antigen === 'PENTA' && dose === 1) syncedPenta1++;
+          else if (antigen === 'PENTA' && dose === 2) syncedPenta2++;
+          else if (antigen === 'OPV' && dose === 1) syncedOpv1++;
+          summary = `Antigen: ${antigen} (Dose ${dose})${clinical.aefi_reported ? ' [AEFI FLAGGED]' : ''}`;
+        } else if (type.includes('NUTRITION') || type.includes('OPT')) {
+          syncedOptTotal++;
+          const status = String(clinical.nutritional_status || 'NORMAL').toUpperCase();
+          if (status.includes('WASTED')) syncedOptWasted++;
+          else if (status.includes('STUNTED')) syncedOptStunted++;
+          else syncedOptNormal++;
+          summary = `Wt ${clinical.weight_kg ?? 'N/A'}kg, Ht ${clinical.height_cm ?? 'N/A'}cm, WHZ: ${clinical.whz ?? 'N/A'} (${status})`;
+        }
+
+        liveRows.push({
+          encounterUuid: docSnap.id,
+          timestamp: String(d.timestamp || ''),
+          encounterType: type,
+          patientName,
+          sitioPurok,
+          riskLevel: risk,
+          bhwId: String(d.bhw_id || 'BHW-NAV-01'),
+          clinicalSummary: summary,
+        });
+      });
+
       await FhsisExportService.generateFhsisMonthlyWorkbook({
         reportingYear: 2026,
         reportingMonth: 'October',
@@ -19,28 +98,29 @@ export const App: React.FC = () => {
         province: 'Biliran',
         maternalMetrics: {
           totalTargetMaternal: 45,
-          prenatalFirstTrimester: 18,
-          prenatalFourVisitsOrMore: 32,
-          highRiskPreeclampsiaDetected: 2,
-          ironFolicAcidSupplemented: 40,
+          prenatalFirstTrimester: 18 + syncedMaternal,
+          prenatalFourVisitsOrMore: 32 + syncedMaternal,
+          highRiskPreeclampsiaDetected: 1 + syncedMaternalHighRisk,
+          ironFolicAcidSupplemented: 38 + syncedIronFolic,
         },
         immunizationMetrics: {
-          bcgDose1: 22,
-          hepbDose1: 21,
-          pentaDose1: 24,
-          pentaDose2: 23,
+          bcgDose1: 22 + syncedBcg,
+          hepbDose1: 21 + syncedHepb,
+          pentaDose1: 24 + syncedPenta1,
+          pentaDose2: 23 + syncedPenta2,
           pentaDose3: 20,
-          opvDose1: 24,
+          opvDose1: 24 + syncedOpv1,
           opvDose2: 23,
           opvDose3: 20,
           fullyImmunizedChildren: 19,
         },
         nutritionOptMetrics: {
-          totalMeasuredPreschoolers: 120,
-          normalStatus: 108,
-          moderatelyStunted: 9,
-          severelyWasted: 3,
+          totalMeasuredPreschoolers: 120 + syncedOptTotal,
+          normalStatus: 108 + syncedOptNormal,
+          moderatelyStunted: 9 + syncedOptStunted,
+          severelyWasted: 3 + syncedOptWasted,
         },
+        liveSyncedEncounters: liveRows,
       });
     } catch (error) {
       console.error('Export failed:', error);

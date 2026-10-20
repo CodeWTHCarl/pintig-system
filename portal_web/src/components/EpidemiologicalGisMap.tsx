@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Layers, ShieldCheck } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { Layers, ShieldCheck, Radio } from 'lucide-react';
 
 interface HouseholdGeo {
   household_uuid: string;
@@ -10,11 +12,30 @@ interface HouseholdGeo {
   longitude: number;
   water_source_code: number;
   sanitation_facility_code: number;
-  risk_category: 'MATERNAL_RISK' | 'MALNUTRITION' | 'WATER_SANITATION' | 'ROUTINE';
+  risk_category: 'MATERNAL_RISK' | 'MALNUTRITION' | 'IMMUNIZATION_AEFI' | 'WATER_SANITATION' | 'ROUTINE';
   indicator_details: string;
+  isLiveSynced?: boolean;
+  syncedAt?: string;
 }
 
-const RAW_COMMUNITY_COORDINATES: HouseholdGeo[] = [
+const TENANT_ID = 'ph_biliran_naval';
+const BARANGAY_ID = 'brgy_pi_garcia';
+
+// Base coordinates for Brgy. P.I. Garcia Sitios & Puroks
+const SITIO_COORDINATES: Record<string, [number, number]> = {
+  'Purok 1 (Centro)': [11.5616, 124.3976],
+  'Purok 2': [11.5621, 124.3968],
+  'Purok 3': [11.5632, 124.3972],
+  'Purok 4': [11.5646, 124.3953],
+  'Purok 5': [11.5604, 124.4013],
+  'Sitio Tinago': [11.5625, 124.3984],
+  'Sitio Anas': [11.5638, 124.4005],
+  'Sitio Seaside': [11.5647, 124.3954],
+  'Sitio Lupa': [11.5603, 124.4013],
+  'Sitio Central': [11.5616, 124.3976],
+};
+
+const BASELINE_COMMUNITY_COORDINATES: HouseholdGeo[] = [
   {
     household_uuid: '11111111-0000-4000-8000-000000000001',
     sitio_name: 'Sitio Tinago',
@@ -46,16 +67,6 @@ const RAW_COMMUNITY_COORDINATES: HouseholdGeo[] = [
     indicator_details: 'Routine Immunization & Normal Prenatal Status',
   },
   {
-    household_uuid: '11111111-0000-4000-8000-000000000004',
-    sitio_name: 'Sitio Seaside',
-    latitude: 11.5645,
-    longitude: 124.3951,
-    water_source_code: 2,
-    sanitation_facility_code: 1,
-    risk_category: 'ROUTINE',
-    indicator_details: 'Routine Growth Monitoring & Normal Maternal Care',
-  },
-  {
     household_uuid: '11111111-0000-4000-8000-000000000005',
     sitio_name: 'Sitio Seaside',
     latitude: 11.5649,
@@ -74,36 +85,6 @@ const RAW_COMMUNITY_COORDINATES: HouseholdGeo[] = [
     sanitation_facility_code: 1,
     risk_category: 'MALNUTRITION',
     indicator_details: 'Chloe Flores (HAZ -2.48 - Moderately Stunted)',
-  },
-  {
-    household_uuid: '11111111-0000-4000-8000-000000000007',
-    sitio_name: 'Sitio Lupa',
-    latitude: 11.5601,
-    longitude: 124.4012,
-    water_source_code: 3,
-    sanitation_facility_code: 2,
-    risk_category: 'ROUTINE',
-    indicator_details: 'Routine Child Nutrition & Normal Encounters',
-  },
-  {
-    household_uuid: '11111111-0000-4000-8000-000000000008',
-    sitio_name: 'Sitio Lupa',
-    latitude: 11.5605,
-    longitude: 124.4015,
-    water_source_code: 2,
-    sanitation_facility_code: 1,
-    risk_category: 'ROUTINE',
-    indicator_details: 'Routine Encounters Logged',
-  },
-  {
-    household_uuid: '11111111-0000-4000-8000-000000000009',
-    sitio_name: 'Sitio Central',
-    latitude: 11.5615,
-    longitude: 124.3975,
-    water_source_code: 3,
-    sanitation_facility_code: 2,
-    risk_category: 'ROUTINE',
-    indicator_details: 'Central Admin Cluster Encampment',
   },
   {
     household_uuid: '11111111-0000-4000-8000-000000000010',
@@ -155,9 +136,92 @@ export const EpidemiologicalGisMap: React.FC = () => {
   const mapInstanceRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
+  const [liveEncounters, setLiveEncounters] = useState<HouseholdGeo[]>([]);
+
+  // Subscribe to live synced encounters from Firestore
+  useEffect(() => {
+    const encountersRef = collection(
+      db,
+      `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/encounters`
+    );
+
+    const unsubscribe = onSnapshot(encountersRef, (snapshot) => {
+      const mapped: HouseholdGeo[] = [];
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        let clinical: Record<string, any> = {};
+        if (typeof d.clinical_data === 'string') {
+          try {
+            clinical = JSON.parse(d.clinical_data);
+          } catch {
+            clinical = {};
+          }
+        } else if (d.clinical_data && typeof d.clinical_data === 'object') {
+          clinical = d.clinical_data;
+        }
+
+        const sitio = String(d.sitio_purok || clinical.sitio_purok || 'Purok 1 (Centro)');
+        const patientName = String(d.patient_name || clinical.patient_name || 'Edge Patient');
+        const [baseLat, baseLng] = SITIO_COORDINATES[sitio] || [11.5625, 124.3980];
+
+        const encType = String(d.encounter_type || 'MATERNAL_CARE').toUpperCase();
+        const riskLevel = String(d.triage_risk_level || 'NORMAL').toUpperCase();
+
+        let riskCategory: HouseholdGeo['risk_category'] = 'ROUTINE';
+        let details = `${patientName} — Routine ${encType.replace('_', ' ')}`;
+
+        if (encType.includes('MATERNAL')) {
+          const sys = clinical.systolic_bp ?? 'N/A';
+          const dia = clinical.diastolic_bp ?? 'N/A';
+          if (riskLevel === 'HIGH' || riskLevel === 'MODERATE') {
+            riskCategory = 'MATERNAL_RISK';
+            details = `${patientName} (BP ${sys}/${dia} mmHg - Preeclampsia ${riskLevel})`;
+          } else {
+            details = `${patientName} (BP ${sys}/${dia} mmHg - Normal Prenatal)`;
+          }
+        } else if (encType.includes('NUTRITION') || encType.includes('OPT')) {
+          const whz = clinical.whz ?? '';
+          const status = String(clinical.nutritional_status || 'NORMAL').replace('_', ' ');
+          if (riskLevel === 'HIGH' || riskLevel === 'MODERATE') {
+            riskCategory = 'MALNUTRITION';
+            details = `${patientName} (Wt ${clinical.weight_kg ?? ''}kg, WHZ ${whz} - ${status})`;
+          } else {
+            details = `${patientName} (OPT+ Normal Growth)`;
+          }
+        } else if (encType.includes('IMMUNIZATION') || encType.includes('EPI')) {
+          const antigen = clinical.antigen_code || 'EPI';
+          const dose = clinical.dose_number || 1;
+          if (riskLevel === 'HIGH' || clinical.aefi_reported) {
+            riskCategory = 'IMMUNIZATION_AEFI';
+            details = `${patientName} (${antigen} Dose ${dose} - AEFI High Fever Alert)`;
+          } else {
+            details = `${patientName} (${antigen} Dose ${dose} Administered)`;
+          }
+        }
+
+        mapped.push({
+          household_uuid: docSnap.id,
+          sitio_name: sitio,
+          latitude: baseLat,
+          longitude: baseLng,
+          water_source_code: 1,
+          sanitation_facility_code: 1,
+          risk_category: riskCategory,
+          indicator_details: details,
+          isLiveSynced: true,
+          syncedAt: d.timestamp,
+        });
+      });
+
+      setLiveEncounters(mapped);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const deidentifiedData = useMemo(() => {
-    return RAW_COMMUNITY_COORDINATES.map((item) => {
+    const combined = [...liveEncounters, ...BASELINE_COMMUNITY_COORDINATES];
+    return combined.map((item) => {
       const [jitteredLat, jitteredLng] = applyGaussianCoordinateJitter(
         item.latitude,
         item.longitude,
@@ -169,12 +233,11 @@ export const EpidemiologicalGisMap: React.FC = () => {
         displayLng: jitteredLng,
       };
     });
-  }, []);
+  }, [liveEncounters]);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    // Destroy existing instance to prevent "Map container is already initialized"
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
       mapInstanceRef.current = null;
@@ -202,7 +265,6 @@ export const EpidemiologicalGisMap: React.FC = () => {
     mapInstanceRef.current = map;
     layerGroupRef.current = layerGroup;
 
-    // Force map to recalculate container boundaries once mounted
     setTimeout(() => {
       map.invalidateSize();
     }, 100);
@@ -216,7 +278,6 @@ export const EpidemiologicalGisMap: React.FC = () => {
     };
   }, []);
 
-  // Update canvas markers when filter changes
   useEffect(() => {
     if (!layerGroupRef.current || !mapInstanceRef.current) return;
 
@@ -237,6 +298,9 @@ export const EpidemiologicalGisMap: React.FC = () => {
       } else if (pt.risk_category === 'MALNUTRITION') {
         fillColor = '#f59e0b';
         strokeColor = '#b45309';
+      } else if (pt.risk_category === 'IMMUNIZATION_AEFI') {
+        fillColor = '#e11d48';
+        strokeColor = '#881337';
       } else if (pt.risk_category === 'WATER_SANITATION') {
         fillColor = '#6366f1';
         strokeColor = '#4338ca';
@@ -252,20 +316,24 @@ export const EpidemiologicalGisMap: React.FC = () => {
       });
 
       const marker = L.circleMarker([pt.displayLat, pt.displayLng], {
-        radius: 8,
+        radius: pt.isLiveSynced ? 9 : 7,
         fillColor: fillColor,
         color: '#ffffff',
         weight: 2,
         opacity: 1,
-        fillOpacity: 0.9,
+        fillOpacity: 0.95,
       });
+
+      const liveBadge = pt.isLiveSynced
+        ? `<span style="display:inline-block; background:#0284c7; color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:4px; margin-left:6px;">LIVE EDGE SYNC</span>`
+        : '';
 
       const popupHtml = `
         <div style="font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4; color: #1e293b;">
           <div style="font-weight: 700; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">
-            ${pt.sitio_name} (De-Identified)
+            ${pt.sitio_name} (De-Identified) ${liveBadge}
           </div>
-          <div style="margin-bottom: 4px;"><strong>Indicator:</strong> ${pt.indicator_details}</div>
+          <div style="margin-bottom: 4px;"><strong>Case:</strong> ${pt.indicator_details}</div>
           <div style="color: #64748b; font-size: 11px;">
             <strong>Privacy Protection:</strong> ±150m Gaussian displacement applied under RA 10173.
           </div>
@@ -279,14 +347,19 @@ export const EpidemiologicalGisMap: React.FC = () => {
   }, [selectedFilter, deidentifiedData]);
 
   return (
-    <div className="relative w-full h-[620px] rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white flex flex-col">
-      <div className="absolute top-4 left-4 z-[1000] bg-white/95 backdrop-blur-sm p-3 rounded-lg shadow-md border border-slate-200 max-w-sm">
-        <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
-          <Layers className="h-4 w-4 text-teal-600" />
-          Epidemiological GIS Spot Map
+    <div className="relative w-full h-[640px] rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white flex flex-col">
+      <div className="absolute top-4 left-4 z-[1000] bg-white/95 backdrop-blur-sm p-3.5 rounded-lg shadow-md border border-slate-200 max-w-md">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+            <Layers className="h-4 w-4 text-teal-600" />
+            Epidemiological GIS Spot Map
+          </div>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Radio className="h-3 w-3 animate-pulse" /> {liveEncounters.length} Live Synced
+          </span>
         </div>
         <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-          Brgy. P.I. Garcia • Sitio Tinago, Seaside, Lupa & Central
+          Brgy. P.I. Garcia • Purok 1–5, Sitio Tinago, Anas, Seaside & Lupa
         </p>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -294,6 +367,7 @@ export const EpidemiologicalGisMap: React.FC = () => {
             { id: 'ALL', label: 'All Indicators' },
             { id: 'MATERNAL_RISK', label: 'Maternal High Risk' },
             { id: 'MALNUTRITION', label: 'Child Malnutrition' },
+            { id: 'IMMUNIZATION_AEFI', label: 'AEFI Alerts' },
             { id: 'WATER_SANITATION', label: 'WASH Vulnerability' },
           ].map((item) => (
             <button
