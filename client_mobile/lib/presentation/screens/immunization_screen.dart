@@ -17,12 +17,22 @@ class ImmunizationScreen extends ConsumerStatefulWidget {
 }
 
 class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _lotController = TextEditingController();
   final TextEditingController _aefiNotesController = TextEditingController();
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
 
   static const List<String> _antigens = ['BCG', 'HEPB', 'PENTA', 'OPV', 'IPV', 'PCV', 'MCV'];
+  static const List<String> _sitioOptions = [
+    'Purok 1 (Centro)',
+    'Purok 2',
+    'Purok 3',
+    'Purok 4',
+    'Purok 5',
+    'Sitio Tinago',
+    'Sitio Anas',
+  ];
 
   @override
   void initState() {
@@ -32,6 +42,7 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _dateController.dispose();
     _lotController.dispose();
     _aefiNotesController.dispose();
@@ -88,7 +99,6 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Deterministic Interval Violation Warning
             if (formState.intervalViolationMessage != null) ...[
               PintigCdssBanner(
                 title: 'EPI Spacing Rule Violation',
@@ -99,7 +109,6 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
               const SizedBox(height: 16.0),
             ],
 
-            // AEFI High-Risk CDSS Alert Banner
             if (formState.aefiReported) ...[
               const PintigCdssBanner(
                 title: 'High Risk: Suspected AEFI Reaction',
@@ -118,6 +127,39 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
               ),
               const SizedBox(height: 16.0),
             ],
+
+            // Child Identification
+            PintigTextField(
+              label: 'Child Full Name (Ngalan sa Bata) *',
+              hint: 'e.g. Lucas Villanueva',
+              controller: _nameController,
+              onChanged: notifier.setPatientName,
+            ),
+            const SizedBox(height: 14.0),
+
+            const Text(
+              'Sitio / Purok Location (Brgy. P.I. Garcia) *',
+              style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6.0),
+            DropdownButtonFormField<String>(
+              value: formState.sitioPurok,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
+                ),
+              ),
+              items: _sitioOptions
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) notifier.setSitioPurok(val);
+              },
+            ),
+            const SizedBox(height: 16.0),
 
             // Antigen Selection Picker
             const Text(

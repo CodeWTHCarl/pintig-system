@@ -12,6 +12,16 @@ class OptNutritionScreen extends ConsumerWidget {
 
   const OptNutritionScreen({super.key, required this.provider});
 
+  static const List<String> _sitioOptions = [
+    'Purok 1 (Centro)',
+    'Purok 2',
+    'Purok 3',
+    'Purok 4',
+    'Purok 5',
+    'Sitio Tinago',
+    'Sitio Anas',
+  ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formState = ref.watch(provider);
@@ -55,24 +65,80 @@ class OptNutritionScreen extends ConsumerWidget {
               const SizedBox(height: 16.0),
             ],
 
-            // Patient Age Readout
-            Container(
-              padding: const EdgeInsets.all(12.0),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(color: PintigTokens.primaryBlue),
+            // Child Identification
+            PintigTextField(
+              label: 'Child Full Name (Ngalan sa Bata) *',
+              hint: 'e.g. Mateo Dela Cruz',
+              onChanged: notifier.setPatientName,
+            ),
+            const SizedBox(height: 14.0),
+
+            const Text(
+              'Sitio / Purok Location (Brgy. P.I. Garcia) *',
+              style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6.0),
+            DropdownButtonFormField<String>(
+              value: formState.sitioPurok,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
+                ),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.cake, color: PintigTokens.primaryBlue),
-                  const SizedBox(width: 10.0),
-                  Text(
-                    'Pasyente Edad: ${formState.ageMonths} ka Bulan (${formState.ageMonths} Months)',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16.0),
+              items: _sitioOptions
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) notifier.setSitioPurok(val);
+              },
+            ),
+            const SizedBox(height: 14.0),
+
+            // Age in Months & Sex Row
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: PintigTextField(
+                    label: 'Age in Months (0-59) *',
+                    hint: 'e.g. 12',
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => notifier.setAgeMonths(int.tryParse(v) ?? 18),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 12.0),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Sex (Sekso) *',
+                        style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6.0),
+                      SizedBox(
+                        height: 52,
+                        width: double.infinity,
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(value: 'M', label: Text('Male')),
+                            ButtonSegment(value: 'F', label: Text('Female')),
+                          ],
+                          selected: {formState.sex},
+                          onSelectionChanged: (sel) => notifier.setSex(sel.first),
+                          style: SegmentedButton.styleFrom(
+                            selectedBackgroundColor: PintigTokens.primaryBlue,
+                            selectedForegroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16.0),
 
@@ -82,7 +148,7 @@ class OptNutritionScreen extends ConsumerWidget {
                 Expanded(
                   child: PintigTextField(
                     label: 'Weight / Timbang (kg) *',
-                    hint: 'e.g. 7.5',
+                    hint: 'e.g. 6.8',
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (v) => notifier.setWeight(double.tryParse(v)),
                   ),
@@ -91,7 +157,7 @@ class OptNutritionScreen extends ConsumerWidget {
                 Expanded(
                   child: PintigTextField(
                     label: 'Height / Gitas-on (cm) *',
-                    hint: 'e.g. 78.0',
+                    hint: 'e.g. 75.0',
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (v) => notifier.setHeight(double.tryParse(v)),
                   ),

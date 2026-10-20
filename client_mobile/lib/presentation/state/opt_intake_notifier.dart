@@ -4,6 +4,9 @@ import '../../data/repositories/encounter_repository.dart';
 import '../../domain/cdss/who_anthro_engine.dart';
 
 class OptFormState {
+  final String patientName;
+  final String sitioPurok;
+  final String sex;
   final DateTime birthdate;
   final DateTime measurementDate;
   final int ageMonths;
@@ -17,12 +20,15 @@ class OptFormState {
   final bool isSuccess;
 
   const OptFormState({
+    this.patientName = '',
+    this.sitioPurok = 'Purok 1 (Centro)',
+    this.sex = 'M',
     required this.birthdate,
     required this.measurementDate,
     required this.ageMonths,
     this.weightKg,
     this.heightCm,
-    this.posture = MeasurementPosture.standing,
+    this.posture = MeasurementPosture.recumbent,
     this.hasEdema = false,
     this.anthroEvaluation,
     this.isSubmitting = false,
@@ -31,6 +37,7 @@ class OptFormState {
   });
 
   bool get isValid =>
+      patientName.trim().isNotEmpty &&
       weightKg != null &&
       weightKg! > 0 &&
       heightCm != null &&
@@ -40,6 +47,9 @@ class OptFormState {
       anthroEvaluation != null;
 
   OptFormState copyWith({
+    String? patientName,
+    String? sitioPurok,
+    String? sex,
     DateTime? birthdate,
     DateTime? measurementDate,
     int? ageMonths,
@@ -53,6 +63,9 @@ class OptFormState {
     bool isSuccess = false,
   }) {
     return OptFormState(
+      patientName: patientName ?? this.patientName,
+      sitioPurok: sitioPurok ?? this.sitioPurok,
+      sex: sex ?? this.sex,
       birthdate: birthdate ?? this.birthdate,
       measurementDate: measurementDate ?? this.measurementDate,
       ageMonths: ageMonths ?? this.ageMonths,
@@ -72,20 +85,20 @@ class OptIntakeNotifier extends StateNotifier<OptFormState> {
   final EncounterRepository _repository;
   final WhoAnthroEngine _anthroEngine;
   final String patientUuid;
-  final String patientSex;
   final String bhwUserId;
 
   OptIntakeNotifier({
     required EncounterRepository repository,
     WhoAnthroEngine? anthroEngine,
     required this.patientUuid,
-    required this.patientSex,
+    required String patientSex,
     required this.bhwUserId,
     required DateTime initialBirthdate,
   })  : _repository = repository,
         _anthroEngine = anthroEngine ?? const WhoAnthroEngine(),
         super(
           OptFormState(
+            sex: patientSex,
             birthdate: initialBirthdate,
             measurementDate: DateTime.now(),
             ageMonths: _computeMonths(initialBirthdate, DateTime.now()),
@@ -98,6 +111,21 @@ class OptIntakeNotifier extends StateNotifier<OptFormState> {
   static int _computeMonths(DateTime birthdate, DateTime target) {
     final days = target.difference(birthdate).inDays;
     return (days / 30.4375).floor().clamp(0, 59);
+  }
+
+  void setPatientName(String name) => state = state.copyWith(patientName: name);
+  void setSitioPurok(String sitio) => state = state.copyWith(sitioPurok: sitio);
+
+  void setAgeMonths(int months) {
+    final clamped = months.clamp(0, 59);
+    final autoPosture = clamped < 24 ? MeasurementPosture.recumbent : MeasurementPosture.standing;
+    state = state.copyWith(ageMonths: clamped, posture: autoPosture);
+    _recalculateAnthro();
+  }
+
+  void setSex(String sex) {
+    state = state.copyWith(sex: sex);
+    _recalculateAnthro();
   }
 
   void setWeight(double? weight) {
@@ -129,7 +157,7 @@ class OptIntakeNotifier extends StateNotifier<OptFormState> {
     try {
       final eval = _anthroEngine.evaluate(
         ageMonths: state.ageMonths,
-        sex: patientSex,
+        sex: state.sex,
         weightKg: state.weightKg!,
         heightCm: state.heightCm!,
         posture: state.posture,
@@ -179,6 +207,8 @@ class OptIntakeNotifier extends StateNotifier<OptFormState> {
         hazScore: state.anthroEvaluation!.hazScore,
         wazScore: state.anthroEvaluation!.wazScore,
         nutritionalStatus: statusString,
+        patientName: state.patientName.trim(),
+        sitioPurok: state.sitioPurok,
       );
 
       state = state.copyWith(isSubmitting: false, isSuccess: true);

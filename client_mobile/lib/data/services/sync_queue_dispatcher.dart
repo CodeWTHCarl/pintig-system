@@ -1,3 +1,4 @@
+// lib/data/services/sync_queue_dispatcher.dart
 import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
@@ -67,10 +68,7 @@ class SyncQueueDispatcher {
             data['payload'] ??
             data['envelope_json'];
 
-        if (rawPayload == null) {
-          debugPrint('[PINTIG SYNC WARN] Skipping row with null payload.');
-          continue;
-        }
+        if (rawPayload == null) continue;
 
         final Map<String, dynamic> decoded = rawPayload is String
             ? jsonDecode(rawPayload) as Map<String, dynamic>
@@ -107,8 +105,11 @@ class SyncQueueDispatcher {
               ? Map<String, dynamic>.from(clinicalDataRaw)
               : <String, dynamic>{};
 
-          // 1. Write raw encounter document to Firestore
-          final encounterFields = {
+          final patientName = (clinicalDataMap['patient_name'] ?? '').toString().trim();
+          final sitioPurok = (clinicalDataMap['sitio_purok'] ?? 'Purok 1 (Centro)').toString().trim();
+
+          // 1. Write Encounter Document to Firestore
+          final encounterFields = <String, dynamic>{
             'encounter_uuid': encounterUuid,
             'patient_uuid': patientUuid,
             'bhw_id': bhwId,
@@ -118,6 +119,8 @@ class SyncQueueDispatcher {
             'clinical_data': jsonEncode(clinicalDataMap),
             'device_id': deviceId,
             'synced_at': DateTime.now().toUtc().toIso8601String(),
+            if (patientName.isNotEmpty) 'patient_name': patientName,
+            if (sitioPurok.isNotEmpty) 'sitio_purok': sitioPurok,
           };
 
           final encounterOk = await _patchDocument(
@@ -131,7 +134,7 @@ class SyncQueueDispatcher {
             throw HttpException('Firestore rejected encounter $encounterUuid');
           }
 
-          // 2. Write dynamic triage alert if risk is HIGH or MODERATE
+          // 2. Write Triage Alert Document if HIGH or MODERATE risk
           if (triageRiskLevel == 'HIGH' || triageRiskLevel == 'MODERATE') {
             final summaryText = _buildClinicalSummary(
               encounterType: encounterType,
@@ -139,7 +142,7 @@ class SyncQueueDispatcher {
               clinicalData: clinicalDataMap,
             );
 
-            final alertFields = {
+            final alertFields = <String, dynamic>{
               'alert_uuid': encounterUuid,
               'encounter_uuid': encounterUuid,
               'patient_uuid': patientUuid,
@@ -149,6 +152,8 @@ class SyncQueueDispatcher {
               'status': 'PENDING',
               'clinical_summary': summaryText,
               'triggered_at': timestamp,
+              if (patientName.isNotEmpty) 'patient_name': patientName,
+              if (sitioPurok.isNotEmpty) 'sitio_purok': sitioPurok,
             };
 
             await _patchDocument(
@@ -159,7 +164,7 @@ class SyncQueueDispatcher {
             );
           }
 
-          // 3. Atomically increment monthly KPI aggregates on Firestore
+          // 3. Increment Monthly KPI Aggregates on Firestore
           final yearMonth = timestamp.length >= 7 ? timestamp.substring(0, 7) : '2026-10';
           await _incrementMonthlyAggregates(
             client: client,
@@ -172,7 +177,7 @@ class SyncQueueDispatcher {
         }
       }
 
-      // 4. Mark all pending rows as SYNCED and notify Drift stream
+      // 4. Mark all pending rows as SYNCED and notify Drift reactive stream
       final syncTable = db.allTables.cast<TableInfo?>().firstWhere(
         (t) => t?.actualTableName == 'sync_queue',
         orElse: () => null,
@@ -206,37 +211,41 @@ class SyncQueueDispatcher {
     }
   }
 
-  /// Builds module-specific clinical summaries for the Web Triage Feed.
   String _buildClinicalSummary({
     required String encounterType,
     required String riskLevel,
     required Map<String, dynamic> clinicalData,
   }) {
-    final patientPrefix = clinicalData['patient_name'] != null
-        ? '${clinicalData['patient_name']} • '
-        : '';
+    final name = (clinicalData['patient_name'] ?? '').toString().trim();
+    final sitio = (clinicalData['sitio_purok'] ?? '').toString().trim();
+    final prefixParts = [
+      if (name.isNotEmpty) name,
+      if (sitio.isNotEmpty) '($sitio)',
+    ];
+    final prefix = prefixParts.isNotEmpty ? '${prefixParts.join(' ')}: ' : '';
 
     if (encounterType.contains('MATERNAL')) {
       final sys = clinicalData['systolic_bp'] ?? 'N/A';
       final dia = clinicalData['diastolic_bp'] ?? 'N/A';
-      return '${patientPrefix}Maternal Care: BP $sys/$dia mmHg (Preeclampsia Risk - $riskLevel)';
+      return '${prefix}BP $sys/$dia mmHg (Preeclampsia Risk - $riskLevel)';
     } else if (encounterType.contains('NUTRITION') || encounterType.contains('OPT')) {
-      final weight = clinicalData['weight_kg'] ?? clinicalData['weight'] ?? 'N/A';
-      final height = clinicalData['height_cm'] ?? clinicalData['length_cm'] ?? 'N/A';
-      final whz = clinicalData['whz'] ?? clinicalData['wfl_z_score'] ?? '';
-      final status = clinicalData['nutritional_status'] ?? 'SAM';
-      final zText = whz.toString().isNotEmpty ? ' | WHZ: $whz ($status)' : ' ($status)';
-      return '${patientPrefix}OPT+ Nutrition: Wt ${weight}kg, Ht ${height}cm$zText';
+      final weight = clinicalData['weight_kg'] ?? 'N/A';
+      final height = clinicalData['height_cm'] ?? 'N/A';
+      final whz = clinicalData['whz'] ?? '';
+      final status = (clinicalData['nutritional_status'] ?? 'SAM').toString().replaceAll('_', ' ');
+      final zText = whz.toString().isNotEmpty ? ' • WHZ: $whz SD' : '';
+      return '${prefix}OPT+ Wt ${weight}kg, Ht ${height}cm$zText ($status)';
     } else if (encounterType.contains('IMMUNIZATION') || encounterType.contains('EPI')) {
-      final vaccine = clinicalData['antigen_code'] ?? clinicalData['vaccine_code'] ?? 'EPI Vaccine';
+      final vaccine = clinicalData['antigen_code'] ?? 'EPI Vaccine';
       final dose = clinicalData['dose_number'] ?? '1';
-      final notes = clinicalData['aefi_notes'] != null ? ' - ${clinicalData['aefi_notes']}' : '';
-      return '${patientPrefix}AEFI Alert: $vaccine (Dose $dose)$notes';
+      final notes = clinicalData['aefi_notes'] != null && clinicalData['aefi_notes'].toString().isNotEmpty
+          ? ' — ${clinicalData['aefi_notes']}'
+          : ' — High Fever / AEFI Reaction';
+      return '${prefix}AEFI Alert on $vaccine (Dose $dose)$notes';
     }
-    return '$patientPrefix$encounterType Encounter (CDSS Flagged $riskLevel)';
+    return '$prefix$encounterType Encounter (Flagged $riskLevel)';
   }
 
-  /// Atomically increments monthly KPI counters in aggregates/{yearMonth}.
   Future<void> _incrementMonthlyAggregates({
     required HttpClient client,
     required String yearMonth,
@@ -260,60 +269,36 @@ class SyncQueueDispatcher {
 
       if (encounterType.contains('MATERNAL')) {
         fieldTransforms.add({
-          'fieldPath': 'maternal_care_count',
-          'increment': {'integerValue': '1'}
-        });
-        fieldTransforms.add({
-          'fieldPath': 'maternal_encounters',
+          'fieldPath': 'maternal_total',
           'increment': {'integerValue': '1'}
         });
         if (riskLevel == 'HIGH' || riskLevel == 'MODERATE') {
           fieldTransforms.add({
-            'fieldPath': 'high_risk_maternal_count',
-            'increment': {'integerValue': '1'}
-          });
-          fieldTransforms.add({
-            'fieldPath': 'high_risk_maternal',
+            'fieldPath': 'maternal_high_risk',
             'increment': {'integerValue': '1'}
           });
         }
       } else if (encounterType.contains('NUTRITION') || encounterType.contains('OPT')) {
         fieldTransforms.add({
-          'fieldPath': 'nutrition_opt_count',
-          'increment': {'integerValue': '1'}
-        });
-        fieldTransforms.add({
-          'fieldPath': 'opt_encounters',
+          'fieldPath': 'nutrition_opt_total',
           'increment': {'integerValue': '1'}
         });
         if (riskLevel == 'HIGH' || riskLevel == 'MODERATE') {
           fieldTransforms.add({
-            'fieldPath': 'severe_wasting_count',
-            'increment': {'integerValue': '1'}
-          });
-          fieldTransforms.add({
-            'fieldPath': 'high_risk_nutrition_count',
+            'fieldPath': 'nutrition_severely_wasted',
             'increment': {'integerValue': '1'}
           });
         }
       } else if (encounterType.contains('IMMUNIZATION') || encounterType.contains('EPI')) {
         fieldTransforms.add({
-          'fieldPath': 'immunization_count',
-          'increment': {'integerValue': '1'}
-        });
-        fieldTransforms.add({
-          'fieldPath': 'immunization_encounters',
-          'increment': {'integerValue': '1'}
-        });
-        fieldTransforms.add({
-          'fieldPath': 'fic_count',
+          'fieldPath': 'immunization_total',
           'increment': {'integerValue': '1'}
         });
       }
 
       if (riskLevel == 'HIGH' || riskLevel == 'MODERATE') {
         fieldTransforms.add({
-          'fieldPath': 'active_triage_alerts',
+          'fieldPath': 'high_risk_alerts_count',
           'increment': {'integerValue': '1'}
         });
       }
@@ -334,10 +319,6 @@ class SyncQueueDispatcher {
       request.write(jsonEncode(payload));
       final response = await request.close();
       await utf8.decoder.bind(response).join();
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('[PINTIG AGGREGATES OK] Incremented KPIs for $yearMonth');
-      }
     } catch (e) {
       debugPrint('[PINTIG AGGREGATES WARN] Failed to increment KPIs: $e');
     }

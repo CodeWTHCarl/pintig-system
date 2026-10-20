@@ -4,6 +4,8 @@ import '../../data/repositories/encounter_repository.dart';
 import '../../domain/cdss/maternal_triage_engine.dart';
 
 class MaternalCareFormState {
+  final String patientName;
+  final String sitioPurok;
   final DateTime? lmpDate;
   final DateTime? edcDate;
   final int gravidity;
@@ -20,6 +22,8 @@ class MaternalCareFormState {
   final bool isSuccess;
 
   const MaternalCareFormState({
+    this.patientName = '',
+    this.sitioPurok = 'Purok 1 (Centro)',
     this.lmpDate,
     this.edcDate,
     this.gravidity = 1,
@@ -37,6 +41,7 @@ class MaternalCareFormState {
   });
 
   bool get isValid =>
+      patientName.trim().isNotEmpty &&
       lmpDate != null &&
       edcDate != null &&
       gravidity >= 1 &&
@@ -48,6 +53,8 @@ class MaternalCareFormState {
       weightKg! > 20.0;
 
   MaternalCareFormState copyWith({
+    String? patientName,
+    String? sitioPurok,
     DateTime? lmpDate,
     DateTime? edcDate,
     int? gravidity,
@@ -65,6 +72,8 @@ class MaternalCareFormState {
     bool isSuccess = false,
   }) {
     return MaternalCareFormState(
+      patientName: patientName ?? this.patientName,
+      sitioPurok: sitioPurok ?? this.sitioPurok,
       lmpDate: lmpDate ?? this.lmpDate,
       edcDate: edcDate ?? this.edcDate,
       gravidity: gravidity ?? this.gravidity,
@@ -95,8 +104,10 @@ class MaternalIntakeNotifier extends StateNotifier<MaternalCareFormState> {
   })  : _repository = repository,
         super(const MaternalCareFormState());
 
+  void setPatientName(String name) => state = state.copyWith(patientName: name);
+  void setSitioPurok(String sitio) => state = state.copyWith(sitioPurok: sitio);
+
   void setLmpDate(DateTime date) {
-    // Naegele's Rule: EDC = LMP + 280 days
     final derivedEdc = date.add(const Duration(days: 280));
     state = state.copyWith(lmpDate: date, edcDate: derivedEdc);
   }
@@ -172,8 +183,9 @@ class MaternalIntakeNotifier extends StateNotifier<MaternalCareFormState> {
         maternalWeightKg: state.weightKg!,
         fundicHeightCm: state.fundicHeightCm,
         ironFolicGiven: state.ironFolicGiven,
+        patientName: state.patientName.trim(),
+        sitioPurok: state.sitioPurok,
       );
-
       state = state.copyWith(isSubmitting: false, isSuccess: true);
     } catch (e) {
       state = state.copyWith(

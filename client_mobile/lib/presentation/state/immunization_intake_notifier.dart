@@ -4,6 +4,8 @@ import '../../data/local/database.dart';
 import '../../data/repositories/encounter_repository.dart';
 
 class ImmunizationFormState {
+  final String patientName;
+  final String sitioPurok;
   final String antigenCode;
   final int doseNumber;
   final DateTime administrationDate;
@@ -16,6 +18,8 @@ class ImmunizationFormState {
   final bool isSuccess;
 
   const ImmunizationFormState({
+    this.patientName = '',
+    this.sitioPurok = 'Purok 1 (Centro)',
     this.antigenCode = 'BCG',
     this.doseNumber = 1,
     required this.administrationDate,
@@ -28,11 +32,13 @@ class ImmunizationFormState {
     this.isSuccess = false,
   });
 
-  bool get isValid => intervalViolationMessage == null;
+  bool get isValid => patientName.trim().isNotEmpty && intervalViolationMessage == null;
 
   String get triageRiskLevel => aefiReported ? 'HIGH' : 'NORMAL';
 
   ImmunizationFormState copyWith({
+    String? patientName,
+    String? sitioPurok,
     String? antigenCode,
     int? doseNumber,
     DateTime? administrationDate,
@@ -46,6 +52,8 @@ class ImmunizationFormState {
     bool isSuccess = false,
   }) {
     return ImmunizationFormState(
+      patientName: patientName ?? this.patientName,
+      sitioPurok: sitioPurok ?? this.sitioPurok,
       antigenCode: antigenCode ?? this.antigenCode,
       doseNumber: doseNumber ?? this.doseNumber,
       administrationDate: administrationDate ?? this.administrationDate,
@@ -78,6 +86,9 @@ class ImmunizationIntakeNotifier extends StateNotifier<ImmunizationFormState> {
         super(ImmunizationFormState(administrationDate: DateTime.now())) {
     _validateInterval();
   }
+
+  void setPatientName(String name) => state = state.copyWith(patientName: name);
+  void setSitioPurok(String sitio) => state = state.copyWith(sitioPurok: sitio);
 
   void setAntigen(String antigen) {
     state = state.copyWith(antigenCode: antigen);
@@ -146,6 +157,8 @@ class ImmunizationIntakeNotifier extends StateNotifier<ImmunizationFormState> {
         triageRiskLevel: state.triageRiskLevel,
         aefiReported: state.aefiReported,
         aefiNotes: state.aefiSymptoms,
+        patientName: state.patientName.trim(),
+        sitioPurok: state.sitioPurok,
       );
 
       state = state.copyWith(isSubmitting: false, isSuccess: true);
