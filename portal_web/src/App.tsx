@@ -4,7 +4,7 @@ import { db } from './config/firebase';
 import { DashboardOverview } from './components/DashboardOverview';
 import { EpidemiologicalGisMap } from './components/EpidemiologicalGisMap';
 import { FhsisExportService, SyncedEncounterRow } from './services/FhsisExportService';
-import { LayoutDashboard, MapPin, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, MapPin, FileSpreadsheet, ShieldCheck, Radio, Stethoscope } from 'lucide-react';
 
 const TENANT_ID = 'ph_biliran_naval';
 const BARANGAY_ID = 'brgy_pi_garcia';
@@ -16,7 +16,6 @@ export const App: React.FC = () => {
   const handleDownloadFhsis = async () => {
     setIsExporting(true);
     try {
-      // Query live synced encounters from Firestore to merge with Barangay baseline
       const encountersSnap = await getDocs(
         collection(db, `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/encounters`)
       );
@@ -131,52 +130,96 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-slate-100 font-sans text-slate-800">
-      {/* Sidebar Navigation */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col justify-between shrink-0">
+      {/* Pintig Brand Command Sidebar */}
+      <aside className="w-72 bg-gradient-to-b from-slate-950 via-slate-900 to-[#1f0d12] text-white flex flex-col justify-between shrink-0 border-r border-slate-800/80 shadow-2xl">
         <div>
-          <div className="p-6 border-b border-slate-800">
-            <h1 className="text-xl font-black tracking-wider text-sky-400">PINTIG</h1>
-            <p className="text-xs text-slate-400 mt-0.5">RHU Naval Command Portal</p>
+          {/* Official Pintig Logo & Brand Header */}
+          <div className="p-6 border-b border-slate-800/80">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-[#FAF8F5] p-1.5 flex items-center justify-center shadow-lg shadow-rose-950/50 border border-white/80 shrink-0 overflow-hidden">
+                <img
+                  src="/pintig_logo.png"
+                  alt="Pintig Logo"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-black tracking-wider text-white">Pintig</h1>
+                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-rose-500/20 text-rose-300 rounded border border-rose-500/30">
+                    PRO
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  RHU Naval Command Portal
+                </p>
+              </div>
+            </div>
+
+            {/* Live Edge Bridge Pill */}
+            <div className="mt-4 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between text-[11px]">
+              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                <Radio className="h-3.5 w-3.5 animate-pulse" /> Edge Sync Online
+              </span>
+              <span className="text-slate-400 font-mono">pintig-219</span>
+            </div>
           </div>
 
-          <nav className="p-4 space-y-1">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-                activeTab === 'dashboard'
-                  ? 'bg-sky-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <LayoutDashboard className="h-4 w-4" /> Overview & Triage
-            </button>
+          {/* Navigation Links */}
+          <div className="px-4 pt-5 pb-2">
+            <span className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Clinical Surveillance
+            </span>
+            <nav className="mt-2 space-y-1.5">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-bold transition-all ${
+                  activeTab === 'dashboard'
+                    ? 'bg-gradient-to-r from-[#C81E2B] to-rose-700 text-white shadow-lg shadow-rose-950/60'
+                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-white'
+                }`}
+              >
+                <LayoutDashboard className="h-4 w-4" /> Overview & Triage
+              </button>
 
-            <button
-              onClick={() => setActiveTab('map')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-                activeTab === 'map'
-                  ? 'bg-sky-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <MapPin className="h-4 w-4" /> Spot Mapping (GIS)
-            </button>
-          </nav>
+              <button
+                onClick={() => setActiveTab('map')}
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-bold transition-all ${
+                  activeTab === 'map'
+                    ? 'bg-gradient-to-r from-[#C81E2B] to-rose-700 text-white shadow-lg shadow-rose-950/60'
+                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-white'
+                }`}
+              >
+                <MapPin className="h-4 w-4" /> Spot Mapping (GIS)
+              </button>
+            </nav>
+          </div>
         </div>
 
-        {/* 1-Click DOH Export Button in Sidebar */}
-        <div className="p-4 border-t border-slate-800">
+        {/* Bottom Command Officer & 1-Click FHSIS Export Panel */}
+        <div className="p-4 space-y-3 border-t border-slate-800/80 bg-slate-950/50">
+          <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+              <Stethoscope className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-white truncate">Dr. Estrada, MHO</p>
+              <p className="text-[11px] text-slate-400 truncate">Brgy. P.I. Garcia • Naval</p>
+            </div>
+          </div>
+
           <button
             onClick={handleDownloadFhsis}
             disabled={isExporting}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 text-white p-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+            className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-700 disabled:to-slate-700 text-white p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition-all"
           >
             <FileSpreadsheet className="h-4 w-4" />
-            {isExporting ? 'Generating Excel...' : '1-Click FHSIS M1/M2'}
+            {isExporting ? 'Generating DOH Workbook...' : '1-Click FHSIS M1/M2'}
           </button>
-          <p className="text-[10px] text-slate-400 text-center mt-2">
-            Auto-formatted official DOH Excel
-          </p>
+          <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400">
+            <ShieldCheck className="h-3 w-3 text-emerald-400" />
+            <span>RA 10173 & DOH FHSIS Compliant</span>
+          </div>
         </div>
       </aside>
 

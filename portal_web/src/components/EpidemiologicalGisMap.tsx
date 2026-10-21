@@ -21,7 +21,6 @@ interface HouseholdGeo {
 const TENANT_ID = 'ph_biliran_naval';
 const BARANGAY_ID = 'brgy_pi_garcia';
 
-// Base coordinates for Brgy. P.I. Garcia Sitios & Puroks
 const SITIO_COORDINATES: Record<string, [number, number]> = {
   'Purok 1 (Centro)': [11.5616, 124.3976],
   'Purok 2': [11.5621, 124.3968],
@@ -138,7 +137,6 @@ export const EpidemiologicalGisMap: React.FC = () => {
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
   const [liveEncounters, setLiveEncounters] = useState<HouseholdGeo[]>([]);
 
-  // Subscribe to live synced encounters from Firestore
   useEffect(() => {
     const encountersRef = collection(
       db,
@@ -254,10 +252,10 @@ export const EpidemiologicalGisMap: React.FC = () => {
       preferCanvas: true,
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    // Free, keyless OpenStreetMap Standard Tile Server
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
     }).addTo(map);
 
@@ -309,10 +307,10 @@ export const EpidemiologicalGisMap: React.FC = () => {
       const privacyBuffer = L.circle([pt.displayLat, pt.displayLng], {
         radius: 150,
         color: strokeColor,
-        weight: 1,
+        weight: 1.5,
         dashArray: '3, 4',
         fillColor: fillColor,
-        fillOpacity: 0.05,
+        fillOpacity: 0.08,
       });
 
       const marker = L.circleMarker([pt.displayLat, pt.displayLng], {

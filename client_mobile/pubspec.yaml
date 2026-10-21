@@ -1,5 +1,5 @@
 name: pintig_edge
-description: "The Heartbeat of Last-Mile Healthcare - Edge Client"
+description: "Pintig: The Heartbeat of Last-Mile Healthcare"
 publish_to: "none"
 version: 1.0.0+1
 
@@ -41,5 +41,18 @@ dev_dependencies:
   drift_dev: ^2.20.0
   build_runner: ^2.4.11
 
+  # App Launcher Icon Generator
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/pintig_logo.png"
+  adaptive_icon_background: "#FAF8F5"
+  adaptive_icon_foreground: "assets/pintig_logo.png"
+  min_sdk_android: 21
+
 flutter:
   uses-material-design: true
+  assets:
+    - assets/pintig_logo.png
