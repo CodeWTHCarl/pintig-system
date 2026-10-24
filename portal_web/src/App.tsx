@@ -1,17 +1,105 @@
 import React, { useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from './config/firebase';
 import { DashboardOverview } from './components/DashboardOverview';
 import { EpidemiologicalGisMap } from './components/EpidemiologicalGisMap';
 import { FhsisExportService, SyncedEncounterRow } from './services/FhsisExportService';
-import { LayoutDashboard, MapPin, FileSpreadsheet, ShieldCheck, Radio, Stethoscope } from 'lucide-react';
+import {
+  LayoutDashboard,
+  MapPin,
+  FileSpreadsheet,
+  ShieldCheck,
+  Radio,
+  Stethoscope,
+  RotateCcw,
+} from 'lucide-react';
 
 const TENANT_ID = 'ph_biliran_naval';
 const BARANGAY_ID = 'brgy_pi_garcia';
+const TARGET_MONTH = '2026-10';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'map'>('dashboard');
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+
+  const handleResetDemoData = async () => {
+    const confirmed = window.confirm(
+      'Reset Firestore to a clean presentation slate? This will remove old test records and reset the October 2026 KPI counters.'
+    );
+    if (!confirmed) return;
+
+    setIsResetting(true);
+    try {
+      const batch = writeBatch(db);
+
+      // 1. Delete all existing documents in encounters
+      const encountersRef = collection(
+        db,
+        `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/encounters`
+      );
+      const encountersSnap = await getDocs(encountersRef);
+      encountersSnap.forEach((d) => batch.delete(d.ref));
+
+      // 2. Delete all existing documents in triage_alerts
+      const alertsRef = collection(
+        db,
+        `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/triage_alerts`
+      );
+      const alertsSnap = await getDocs(alertsRef);
+      alertsSnap.forEach((d) => batch.delete(d.ref));
+
+      await batch.commit();
+
+      // 3. Seed 1 clean resolved baseline alert so the feed isn't completely empty before demo
+      const baselineAlertId = '33333333-0000-4000-8000-000000000001';
+      await setDoc(
+        doc(db, `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/triage_alerts/${baselineAlertId}`),
+        {
+          alert_uuid: baselineAlertId,
+          encounter_uuid: baselineAlertId,
+          patient_uuid: '22222222-0000-4000-8000-000000000099',
+          patient_name: 'Elena Navarro (Synthetic)',
+          sitio_purok: 'Sitio Tinago',
+          bhw_id: 'BHW-NAV-01',
+          encounter_type: 'MATERNAL_CARE',
+          risk_level: 'HIGH',
+          status: 'RESOLVED',
+          clinical_summary: 'Elena Navarro (Sitio Tinago): BP 145/95 mmHg (Preeclampsia Risk - HIGH)',
+          triggered_at: new Date().toISOString(),
+          resolution_notes: 'Dispatched RHU ambulance to Sitio Tinago; patient stabilized.',
+          resolved_by: 'MHO_DR_ESTRADA',
+        }
+      );
+
+      // 4. Reset monthly aggregate counters to clean baseline (1 verified maternal high-risk case)
+      await setDoc(
+        doc(db, `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/aggregates/${TARGET_MONTH}`),
+        {
+          year_month: TARGET_MONTH,
+          total_encounters: 1,
+          high_risk_alerts_count: 1,
+          maternal_total: 1,
+          maternal_high_risk: 1,
+          immunization_total: 0,
+          nutrition_opt_total: 0,
+          nutrition_severely_wasted: 0,
+          nutrition_moderately_stunted: 0,
+        }
+      );
+    } catch (error) {
+      console.error('Failed to reset demo data:', error);
+      alert('Failed to reset demo data. Check console for details.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   const handleDownloadFhsis = async () => {
     setIsExporting(true);
@@ -197,7 +285,7 @@ export const App: React.FC = () => {
         </div>
 
         {/* Bottom Command Officer & 1-Click FHSIS Export Panel */}
-        <div className="p-4 space-y-3 border-t border-slate-800/80 bg-slate-950/50">
+        <div className="p-4 space-y-2.5 border-t border-slate-800/80 bg-slate-950/50">
           <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
               <Stethoscope className="h-4 w-4" />
@@ -216,7 +304,18 @@ export const App: React.FC = () => {
             <FileSpreadsheet className="h-4 w-4" />
             {isExporting ? 'Generating DOH Workbook...' : '1-Click FHSIS M1/M2'}
           </button>
-          <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400">
+
+          <button
+            onClick={handleResetDemoData}
+            disabled={isResetting}
+            className="w-full bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white py-2 px-3 rounded-lg text-[11px] font-semibold border border-slate-800 flex items-center justify-center gap-1.5 transition-colors"
+            title="Clear old anonymous test cards and reset counters for live presentation"
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${isResetting ? 'animate-spin' : ''}`} />
+            {isResetting ? 'Resetting Slate...' : 'Reset Demo Slate'}
+          </button>
+
+          <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-0.5">
             <ShieldCheck className="h-3 w-3 text-emerald-400" />
             <span>RA 10173 & DOH FHSIS Compliant</span>
           </div>
