@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../state/immunization_intake_notifier.dart';
 import '../theme/pintig_tokens.dart';
 import '../widgets/accessible_form_widgets.dart';
+import '../widgets/pintig_icons.dart';
 
 class ImmunizationScreen extends ConsumerStatefulWidget {
   final AutoDisposeStateNotifierProvider<ImmunizationIntakeNotifier, ImmunizationFormState> provider;
@@ -71,7 +72,7 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
       if (next.isSuccess) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Immunization record saved & queued for sync successfully (<=100ms)'),
+            content: Text('Vaccination saved. It will send when you have signal.'),
             backgroundColor: PintigTokens.clinicalGreen,
           ),
         );
@@ -88,197 +89,161 @@ class _ImmunizationScreenState extends ConsumerState<ImmunizationScreen> {
     });
 
     return Scaffold(
-      backgroundColor: PintigTokens.surfaceBackground,
-      appBar: AppBar(
-        title: const Text('Immunization (TCL-EPI)', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: PintigTokens.primaryBlue,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+      backgroundColor: PintigTokens.paper,
+      body: SafeArea(
+        bottom: false,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (formState.intervalViolationMessage != null) ...[
-              PintigCdssBanner(
-                title: 'EPI Spacing Rule Violation',
-                message: formState.intervalViolationMessage!,
-                backgroundColor: PintigTokens.clinicalRed,
-                icon: Icons.dangerous_outlined,
-              ),
-              const SizedBox(height: 16.0),
-            ],
-
-            if (formState.aefiReported) ...[
-              const PintigCdssBanner(
-                title: 'High Risk: Suspected AEFI Reaction',
-                message:
-                    'Adverse Event Following Immunization (High Fever >=38.5°C, convulsion, or severe local reaction). Immediate RHU Midwife/MHO referral required.',
-                backgroundColor: PintigTokens.clinicalRed,
-                icon: Icons.warning_amber_rounded,
-              ),
-              const SizedBox(height: 16.0),
-            ] else ...[
-              const PintigCdssBanner(
-                title: 'Routine EPI Administration',
-                message: 'No adverse post-vaccination reactions flagged. Cleared for standard dose logging.',
-                backgroundColor: PintigTokens.clinicalGreen,
-                icon: Icons.verified_user_outlined,
-              ),
-              const SizedBox(height: 16.0),
-            ],
-
-            // Child Identification
-            PintigTextField(
-              label: 'Child Full Name (Ngalan sa Bata) *',
-              hint: 'e.g. Lucas Villanueva',
-              controller: _nameController,
-              onChanged: notifier.setPatientName,
+            const PintigScreenHeader(
+              title: 'Vaccination',
+              subtitle: 'Immunization (TCL-EPI)',
             ),
-            const SizedBox(height: 14.0),
-
-            const Text(
-              'Sitio / Purok Location (Brgy. P.I. Garcia) *',
-              style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6.0),
-            DropdownButtonFormField<String>(
-              value: formState.sitioPurok,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
-                ),
-              ),
-              items: _sitioOptions
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (val) {
-                if (val != null) notifier.setSitioPurok(val);
-              },
-            ),
-            const SizedBox(height: 16.0),
-
-            // Antigen Selection Picker
-            const Text(
-              'Antigen Code (Bakuna) *',
-              style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8.0),
-            Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
-              children: _antigens.map((antigen) {
-                final isSelected = formState.antigenCode == antigen;
-                return ChoiceChip(
-                  label: Text(
-                    antigen,
-                    style: TextStyle(
-                      fontSize: 16.0,
-                      fontWeight: FontWeight.bold,
-                      color: isSelected ? Colors.white : PintigTokens.textPrimary,
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const PintigSectionTitle('Child'),
+                    const SizedBox(height: 10.0),
+                    PintigTextField(
+                      label: 'Full name (Ngalan sa Bata)',
+                      hint: 'e.g. Lucas Villanueva',
+                      controller: _nameController,
+                      onChanged: notifier.setPatientName,
                     ),
+                    const SizedBox(height: 14.0),
+                    PintigDropdownField(
+                      label: 'Sitio or purok',
+                      value: formState.sitioPurok,
+                      options: _sitioOptions,
+                      onChanged: notifier.setSitioPurok,
+                    ),
+                    const SizedBox(height: 26.0),
+
+                    const PintigSectionTitle('Vaccine given (Bakuna)'),
+                    const SizedBox(height: 10.0),
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      children: _antigens.map((antigen) {
+                        final isSelected = formState.antigenCode == antigen;
+                        return ChoiceChip(
+                          showCheckmark: false,
+                          label: Text(
+                            antigen,
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.bold,
+                              color: isSelected ? Colors.white : PintigTokens.ink,
+                            ),
+                          ),
+                          selected: isSelected,
+                          selectedColor: PintigTokens.ink,
+                          backgroundColor: Colors.white,
+                          side: BorderSide(
+                            color: isSelected ? PintigTokens.ink : PintigTokens.fieldBorder,
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+                          onSelected: (selected) {
+                            if (selected) notifier.setAntigen(antigen);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 18.0),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6.0),
+                      child: Text(
+                        'Dose number',
+                        style: TextStyle(
+                          fontSize: 15.0,
+                          fontWeight: FontWeight.bold,
+                          color: PintigTokens.ink,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: double.infinity,
+                      height: PintigTokens.minTouchTarget + 4.0,
+                      child: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 1, label: Text('Dose 1')),
+                          ButtonSegment(value: 2, label: Text('Dose 2')),
+                          ButtonSegment(value: 3, label: Text('Dose 3')),
+                        ],
+                        selected: {formState.doseNumber},
+                        onSelectionChanged: (selection) => notifier.setDoseNumber(selection.first),
+                      ),
+                    ),
+                    const SizedBox(height: 26.0),
+
+                    const PintigSectionTitle('Details'),
+                    const SizedBox(height: 10.0),
+                    PintigTextField(
+                      label: 'Date given (Adlaw sa Pagbakuna)',
+                      controller: _dateController,
+                      readOnly: true,
+                      onTap: () => _selectDate(context),
+                      suffixIcon: const PintigIcon(PintigIconName.calendar, size: 24.0),
+                    ),
+                    const SizedBox(height: 14.0),
+                    PintigTextField(
+                      label: 'Lot or batch number',
+                      hint: 'e.g. PENTA-2026-081',
+                      controller: _lotController,
+                      onChanged: notifier.setLotNumber,
+                    ),
+                    const SizedBox(height: 18.0),
+                    PintigToggleRow(
+                      title: 'Bad reaction or high fever (AEFI)',
+                      subtitle: 'Turn on if the child has fever of 38.5°C or more, an abscess, or a severe reaction',
+                      value: formState.aefiReported,
+                      activeColor: PintigTokens.crimson,
+                      activeTint: PintigTokens.roseTint,
+                      onChanged: notifier.setAefiReported,
+                    ),
+                    if (formState.aefiReported) ...[
+                      const SizedBox(height: 12.0),
+                      PintigTextField(
+                        label: 'What did you see?',
+                        hint: 'e.g. Fever 39.1°C and injection site swelling',
+                        controller: _aefiNotesController,
+                        onChanged: notifier.setAefiSymptoms,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            PintigActionBar(
+              banners: [
+                if (formState.intervalViolationMessage != null)
+                  PintigCdssBanner(
+                    title: 'Too soon for this dose',
+                    message: formState.intervalViolationMessage!,
+                    tone: PintigTone.critical,
+                    icon: PintigIconName.waiting,
                   ),
-                  selected: isSelected,
-                  selectedColor: PintigTokens.primaryBlue,
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
-                  onSelected: (selected) {
-                    if (selected) notifier.setAntigen(antigen);
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16.0),
-
-            // Dose Number Segmented Control
-            const Text(
-              'Dose Number *',
-              style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8.0),
-            SizedBox(
-              width: double.infinity,
-              height: PintigTokens.minTouchTarget,
-              child: SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 1, label: Text('Dose 1')),
-                  ButtonSegment(value: 2, label: Text('Dose 2')),
-                  ButtonSegment(value: 3, label: Text('Dose 3')),
-                ],
-                selected: {formState.doseNumber},
-                onSelectionChanged: (selection) => notifier.setDoseNumber(selection.first),
-                style: SegmentedButton.styleFrom(
-                  selectedBackgroundColor: PintigTokens.primaryBlue,
-                  selectedForegroundColor: Colors.white,
-                ),
+                if (formState.aefiReported)
+                  const PintigCdssBanner(
+                    title: 'Suspected reaction. Refer to the RHU.',
+                    message:
+                        'High fever (38.5°C or more), convulsion, or a severe local reaction needs the RHU midwife or MHO right away.',
+                    tone: PintigTone.critical,
+                    icon: PintigIconName.alert,
+                  ),
+              ],
+              disabledHint: formState.isValid ? null : 'Fill in the required fields to save.',
+              button: PintigPrimaryButton(
+                label: 'Save vaccination',
+                isLoading: formState.isSubmitting,
+                onPressed: formState.isValid ? () => notifier.submitEncounter() : null,
               ),
-            ),
-            const SizedBox(height: 16.0),
-
-            // Administration Date
-            PintigTextField(
-              label: 'Administration Date (Adlaw sa Pagbakuna) *',
-              controller: _dateController,
-              readOnly: true,
-              onTap: () => _selectDate(context),
-              suffixIcon: const Icon(Icons.calendar_today, color: PintigTokens.primaryBlue),
-            ),
-            const SizedBox(height: 16.0),
-
-            // Lot Number Field
-            PintigTextField(
-              label: 'Lot / Batch Number',
-              hint: 'e.g. PENTA-2026-081',
-              controller: _lotController,
-              onChanged: notifier.setLotNumber,
-            ),
-            const SizedBox(height: 16.0),
-
-            // AEFI / Severe Fever Toggle
-            Container(
-              decoration: BoxDecoration(
-                color: formState.aefiReported ? const Color(0xFFFFF1F2) : Colors.white,
-                borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(
-                  color: formState.aefiReported ? PintigTokens.clinicalRed : Colors.grey.shade300,
-                  width: 1.5,
-                ),
-              ),
-              child: SwitchListTile(
-                title: const Text(
-                  'Adverse Event / High Fever (AEFI)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.0),
-                ),
-                subtitle: const Text(
-                  'Toggle ON if child exhibits fever >=38.5°C, abscess, or severe reaction',
-                  style: TextStyle(fontSize: 13.0),
-                ),
-                value: formState.aefiReported,
-                activeColor: PintigTokens.clinicalRed,
-                onChanged: notifier.setAefiReported,
-              ),
-            ),
-
-            if (formState.aefiReported) ...[
-              const SizedBox(height: 12.0),
-              PintigTextField(
-                label: 'Observed AEFI Symptoms / Reaction Notes',
-                hint: 'e.g. Fever 39.1°C and injection site swelling',
-                controller: _aefiNotesController,
-                onChanged: notifier.setAefiSymptoms,
-              ),
-            ],
-
-            const SizedBox(height: 24.0),
-
-            // Save Record
-            PintigPrimaryButton(
-              label: 'SAVE RECORD (ILISTA)',
-              isLoading: formState.isSubmitting,
-              onPressed: formState.isValid ? () => notifier.submitEncounter() : null,
             ),
           ],
         ),

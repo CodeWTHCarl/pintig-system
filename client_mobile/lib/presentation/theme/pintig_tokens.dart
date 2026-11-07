@@ -2,31 +2,84 @@
 import 'package:flutter/material.dart';
 
 class PintigTokens {
-  // UI/UX Pro Max Brand Palette (Derived from Pintig Monogram Logo)
+  // Brand (taken from the Pintig logo)
+  static const Color crimson = Color(0xFFC81E2B);
+  static const Color pintigCrimsonDark = Color(0xFF991B1B);
+  static const Color pintigCoral = Color(0xFFEF4444); // the logo's centre dot
+  static const Color logoIvory = Color(0xFFFAF8F5); // the logo's canvas
+
+  // Neutrals
+  static const Color ink = Color(0xFF14202B);
+  static const Color paper = Color(0xFFF3F5F6);
+  static const Color line = Color(0xFFE3E8EB);
+  static const Color fieldBorder = Color(0xFF8A99A5);
+  static const Color mutedText = Color(0xFF4A5966);
+  static const Color hintText = Color(0xFF5E6D79);
+
+  // Status. Tints carry dark text; solid colours carry white text (all >= 4.5:1).
+  static const Color sea = Color(0xFF0B6E74);
+  static const Color seaTint = Color(0xFFDDF0F1);
+  static const Color seaInk = Color(0xFF084F54);
+  static const Color amber = Color(0xFFB45309);
+  static const Color amberTint = Color(0xFFFFF0CF);
+  static const Color amberInk = Color(0xFF5C3A00);
+  static const Color roseTint = Color(0xFFFCE8EA);
+  static const Color roseInk = Color(0xFF8E1621);
+
+  // Legacy names, kept so existing code keeps compiling.
   static const Color deepNavy = Color(0xFF0F172A);
   static const Color slateNavy = Color(0xFF1E293B);
-  static const Color primaryBlue = Color(0xFFC81E2B); // Pintig Arterial Crimson
-  static const Color pintigCrimsonDark = Color(0xFF991B1B);
-  static const Color pintigCoral = Color(0xFFEF4444); // Logo Center Pulse Dot
-  static const Color logoIvory = Color(0xFFFAF8F5);   // Logo Alabaster Canvas
+  static const Color primaryBlue = crimson; // historical name, it is the brand crimson
+  static const Color clinicalGreen = sea;
+  static const Color clinicalRed = crimson;
+  static const Color clinicalAmber = amber;
+  static const Color surfaceBackground = paper;
+  static const Color cardBorder = line;
+  static const Color textPrimary = ink;
+  static const Color textMuted = mutedText;
 
-  // Clinical Triage Semantic Colors
-  static const Color clinicalGreen = Color(0xFF059669);
-  static const Color clinicalRed = Color(0xFFE11D48);
-  static const Color clinicalAmber = Color(0xFFD97706);
-
-  // Surface & Typography Tokens
-  static const Color surfaceBackground = Color(0xFFF8FAFC);
-  static const Color cardBorder = Color(0xFFE2E8F0);
-  static const Color textPrimary = Color(0xFF0F172A);
-  static const Color textMuted = Color(0xFF64748B);
-
-  // Ergonomic Dimensions
+  // Ergonomic dimensions
   static const double minTouchTarget = 52.0;
   static const double inputRadius = 12.0;
+  static const String fontFamily = 'AtkinsonHyperlegible';
 }
 
-/// Official Pintig Brand Emblem Widget (Loads assets/pintig_logo.png with vector fallback)
+class PintigTheme {
+  static ThemeData light() {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: PintigTokens.crimson,
+      primary: PintigTokens.crimson,
+      surface: PintigTokens.paper,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      fontFamily: PintigTokens.fontFamily,
+      scaffoldBackgroundColor: PintigTokens.paper,
+      colorScheme: scheme,
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        contentTextStyle: const TextStyle(
+          fontFamily: PintigTokens.fontFamily,
+          fontSize: 16.0,
+          color: Colors.white,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: PintigTokens.ink,
+          selectedBackgroundColor: PintigTokens.ink,
+          selectedForegroundColor: Colors.white,
+          side: const BorderSide(color: PintigTokens.fieldBorder, width: 1.5),
+          textStyle: const TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+}
+
+/// The Pintig mark (cropped from the official logo) on the logo's own ivory.
 class PintigBrandLogo extends StatelessWidget {
   final double size;
   final bool showGlow;
@@ -34,83 +87,45 @@ class PintigBrandLogo extends StatelessWidget {
   const PintigBrandLogo({
     super.key,
     this.size = 48.0,
-    this.showGlow = true,
+    this.showGlow = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      padding: EdgeInsets.all(size * 0.08),
-      decoration: BoxDecoration(
-        color: PintigTokens.logoIvory,
-        borderRadius: BorderRadius.circular(size * 0.28),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.9),
-          width: 1.5,
+    return Semantics(
+      label: 'Pintig',
+      image: true,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: PintigTokens.logoIvory,
+          borderRadius: BorderRadius.circular(size * 0.26),
+          border: Border.all(color: PintigTokens.line, width: 1.0),
+          boxShadow: showGlow
+              ? [
+                  BoxShadow(
+                    color: PintigTokens.crimson.withOpacity(0.25),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
-        boxShadow: showGlow
-            ? [
-                BoxShadow(
-                  color: PintigTokens.primaryBlue.withOpacity(0.35),
-                  blurRadius: 14,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(size * 0.2),
-        child: Image.asset(
-          'assets/pintig_logo.png',
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            return CustomPaint(
-              painter: _PintigMonogramFallbackPainter(),
-            );
-          },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(size * 0.26),
+          child: Padding(
+            padding: EdgeInsets.all(size * 0.04),
+            child: Image.asset(
+              'assets/pintig_mark.png',
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return Image.asset('assets/pintig_logo.png', fit: BoxFit.contain);
+              },
+            ),
+          ),
         ),
       ),
     );
   }
-}
-
-class _PintigMonogramFallbackPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    final loopPaint = Paint()
-      ..color = PintigTokens.primaryBlue
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.12
-      ..strokeCap = StrokeCap.round;
-
-    final path = Path()
-      ..moveTo(w * 0.35, h * 0.82)
-      ..lineTo(w * 0.35, h * 0.32)
-      ..arcToPoint(
-        Offset(w * 0.78, h * 0.45),
-        radius: Radius.circular(w * 0.24),
-        clockwise: true,
-      )
-      ..arcToPoint(
-        Offset(w * 0.35, h * 0.62),
-        radius: Radius.circular(w * 0.24),
-        clockwise: true,
-      );
-
-    canvas.drawPath(path, loopPaint);
-
-    final dotPaint = Paint()
-      ..color = PintigTokens.pintigCoral
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(Offset(w * 0.52, h * 0.48), w * 0.08, dotPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

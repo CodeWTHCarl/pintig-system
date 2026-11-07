@@ -1,10 +1,70 @@
 // lib/presentation/widgets/accessible_form_widgets.dart
 import 'package:flutter/material.dart';
-import '../theme/pintig_tokens.dart';
 
+import '../theme/pintig_tokens.dart';
+import 'pintig_icons.dart';
+
+OutlineInputBorder _border(Color color, double width) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
+      borderSide: BorderSide(color: color, width: width),
+    );
+
+InputDecoration _fieldDecoration({
+  String? hint,
+  String? unit,
+  String? errorText,
+  Widget? suffixIcon,
+}) {
+  return InputDecoration(
+    hintText: hint,
+    hintStyle: const TextStyle(color: PintigTokens.hintText, fontSize: 17.0),
+    errorText: errorText,
+    errorStyle: const TextStyle(
+      color: PintigTokens.roseInk,
+      fontSize: 14.0,
+      fontWeight: FontWeight.bold,
+    ),
+    suffixText: unit,
+    suffixStyle: const TextStyle(color: PintigTokens.mutedText, fontSize: 15.0),
+    suffixIcon: suffixIcon,
+    filled: true,
+    fillColor: Colors.white,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+    enabledBorder: _border(PintigTokens.fieldBorder, 1.5),
+    focusedBorder: _border(PintigTokens.ink, 2.5),
+    errorBorder: _border(PintigTokens.crimson, 2.0),
+    focusedErrorBorder: _border(PintigTokens.crimson, 2.5),
+    border: _border(PintigTokens.fieldBorder, 1.5),
+  );
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6.0),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 15.0,
+          fontWeight: FontWeight.bold,
+          color: PintigTokens.ink,
+        ),
+      ),
+    );
+  }
+}
+
+/// Text field with the label above it, an optional unit inside, and an
+/// inline error. Same constructor as before plus [unit] and [errorText].
 class PintigTextField extends StatelessWidget {
   final String label;
   final String? hint;
+  final String? unit;
+  final String? errorText;
   final TextEditingController? controller;
   final TextInputType? keyboardType;
   final bool readOnly;
@@ -16,6 +76,8 @@ class PintigTextField extends StatelessWidget {
     super.key,
     required this.label,
     this.hint,
+    this.unit,
+    this.errorText,
     this.controller,
     this.keyboardType,
     this.readOnly = false,
@@ -29,62 +91,28 @@ class PintigTextField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
+        _FieldLabel(label),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          readOnly: readOnly,
+          onTap: onTap,
+          onChanged: onChanged,
           style: const TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w700,
-            color: PintigTokens.textPrimary,
-            letterSpacing: 0.1,
+            fontSize: 19.0,
+            fontWeight: FontWeight.bold,
+            color: PintigTokens.ink,
           ),
-        ),
-        const SizedBox(height: 6.0),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0F172A).withOpacity(0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            readOnly: readOnly,
-            onTap: onTap,
-            onChanged: onChanged,
-            style: const TextStyle(
-              fontSize: 15.5,
-              fontWeight: FontWeight.w600,
-              color: PintigTokens.textPrimary,
-            ),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(
-                color: Color(0xFF94A3B8),
-                fontWeight: FontWeight.normal,
-                fontSize: 14.5,
-              ),
-              suffixIcon: suffixIcon,
-              filled: true,
-              fillColor: readOnly ? const Color(0xFFF8FAFC) : Colors.white,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16.0,
-                vertical: 15.0,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
-                borderSide: const BorderSide(color: PintigTokens.cardBorder, width: 1.2),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
-                borderSide: const BorderSide(color: PintigTokens.primaryBlue, width: 2.0),
-              ),
-            ),
+          decoration: _fieldDecoration(
+            hint: hint,
+            unit: unit,
+            errorText: errorText,
+            suffixIcon: suffixIcon == null
+                ? null
+                : Padding(
+                    padding: const EdgeInsets.all(14.0),
+                    child: suffixIcon,
+                  ),
           ),
         ),
       ],
@@ -92,6 +120,229 @@ class PintigTextField extends StatelessWidget {
   }
 }
 
+/// Dropdown styled to match [PintigTextField].
+class PintigDropdownField extends StatelessWidget {
+  final String label;
+  final String? value;
+  final List<String> options;
+  final ValueChanged<String> onChanged;
+
+  const PintigDropdownField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLabel(label),
+        DropdownButtonFormField<String>(
+          value: value,
+          isExpanded: true,
+          icon: const RotatedBox(
+            quarterTurns: 1,
+            child: PintigIcon(PintigIconName.chevronR, size: 22.0, showDot: false),
+          ),
+          style: const TextStyle(
+            fontSize: 18.0,
+            fontWeight: FontWeight.bold,
+            color: PintigTokens.ink,
+            fontFamily: PintigTokens.fontFamily,
+          ),
+          decoration: _fieldDecoration(),
+          items: options
+              .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+              .toList(),
+          onChanged: (val) {
+            if (val != null) onChanged(val);
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// Switch row that turns tinted when ON. Use [tone] to pick the ON colours.
+class PintigToggleRow extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Color activeColor;
+  final Color activeTint;
+
+  const PintigToggleRow({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.value,
+    required this.onChanged,
+    this.activeColor = PintigTokens.crimson,
+    this.activeTint = PintigTokens.roseTint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: value ? activeTint : Colors.white,
+        borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
+        border: Border.all(
+          color: value ? activeColor : PintigTokens.fieldBorder,
+          width: value ? 2.0 : 1.5,
+        ),
+      ),
+      child: SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 17.0,
+            fontWeight: FontWeight.bold,
+            color: PintigTokens.ink,
+          ),
+        ),
+        subtitle: subtitle == null
+            ? null
+            : Text(
+                subtitle!,
+                style: const TextStyle(fontSize: 14.0, color: PintigTokens.mutedText),
+              ),
+        value: value,
+        activeColor: Colors.white,
+        activeTrackColor: activeColor,
+        inactiveThumbColor: Colors.white,
+        inactiveTrackColor: PintigTokens.fieldBorder,
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+class PintigSectionTitle extends StatelessWidget {
+  final String text;
+  const PintigSectionTitle(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 18.0,
+          fontWeight: FontWeight.bold,
+          color: PintigTokens.ink,
+        ),
+      ),
+    );
+  }
+}
+
+/// Screen header: custom back chevron, title and a line of context.
+/// Replaces the old coloured AppBar. Place it at the top of the body.
+class PintigScreenHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+
+  const PintigScreenHeader({super.key, required this.title, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8.0, 8.0, 16.0, 8.0),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back',
+            constraints: const BoxConstraints(minWidth: 52.0, minHeight: 52.0),
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const PintigIcon(PintigIconName.chevronL, size: 28.0, showDot: false),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Semantics(
+                  header: true,
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 21.0,
+                      fontWeight: FontWeight.bold,
+                      color: PintigTokens.ink,
+                    ),
+                  ),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: const TextStyle(fontSize: 14.0, color: PintigTokens.mutedText),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pinned bottom panel: live triage result(s) above the Save button, so the
+/// result stays visible while the user fills the form. While the keyboard is
+/// open only the results are shown.
+class PintigActionBar extends StatelessWidget {
+  final List<Widget> banners;
+  final Widget button;
+  final String? disabledHint;
+
+  const PintigActionBar({
+    super.key,
+    this.banners = const [],
+    required this.button,
+    this.disabledHint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboardOpen = media.viewInsets.bottom > 0;
+    if (keyboardOpen && banners.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: PintigTokens.line)),
+      ),
+      padding: EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 12.0 + media.padding.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final b in banners) ...[b, const SizedBox(height: 10.0)],
+          if (!keyboardOpen) button,
+          if (!keyboardOpen && disabledHint != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(
+                disabledHint!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14.0, color: PintigTokens.mutedText),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Main action button. Disabled when [onPressed] is null.
 class PintigPrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -106,166 +357,108 @@ class PintigPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool enabled = onPressed != null && !isLoading;
-
-    return Container(
+    return SizedBox(
       width: double.infinity,
       height: 56.0,
-      decoration: BoxDecoration(
-        gradient: enabled
-            ? const LinearGradient(
-                colors: [Color(0xFFC81E2B), Color(0xFF991B1B)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              )
-            : null,
-        color: enabled ? null : const Color(0xFFCBD5E1),
-        borderRadius: BorderRadius.circular(14.0),
-        boxShadow: enabled
-            ? [
-                BoxShadow(
-                  color: const Color(0xFFC81E2B).withOpacity(0.32),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
-                ),
-              ]
-            : null,
-      ),
-      child: ElevatedButton(
-        onPressed: enabled ? onPressed : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          disabledBackgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
+      child: FilledButton(
+        onPressed: isLoading ? null : onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: PintigTokens.crimson,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14.0),
-          ),
+          disabledBackgroundColor: const Color(0xFFD5DCE1),
+          disabledForegroundColor: PintigTokens.mutedText,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
+          textStyle: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
         ),
         child: isLoading
             ? const SizedBox(
                 width: 24.0,
                 height: 24.0,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.5,
-                ),
+                child: CircularProgressIndicator(strokeWidth: 3.0, color: Colors.white),
               )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.favorite_rounded, size: 19.0),
-                  const SizedBox(width: 8.0),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ],
-              ),
+            : Text(label),
       ),
     );
   }
 }
 
+enum PintigTone { critical, caution, ok }
+
+/// Triage result. Tinted background with dark text (not white on a solid
+/// colour), icon plus words so colour is never the only signal, and announced
+/// to screen readers when it changes.
 class PintigCdssBanner extends StatelessWidget {
   final String title;
   final String message;
-  final Color backgroundColor;
-  final IconData icon;
+  final PintigTone tone;
+  final PintigIconName icon;
 
   const PintigCdssBanner({
     super.key,
     required this.title,
     required this.message,
-    required this.backgroundColor,
-    required this.icon,
+    this.tone = PintigTone.caution,
+    this.icon = PintigIconName.alert,
   });
 
   @override
   Widget build(BuildContext context) {
+    final Color tint;
+    final Color ink;
+    final Color accent;
+    switch (tone) {
+      case PintigTone.critical:
+        tint = PintigTokens.roseTint;
+        ink = PintigTokens.roseInk;
+        accent = PintigTokens.crimson;
+        break;
+      case PintigTone.caution:
+        tint = PintigTokens.amberTint;
+        ink = PintigTokens.amberInk;
+        accent = PintigTokens.amber;
+        break;
+      case PintigTone.ok:
+        tint = PintigTokens.seaTint;
+        ink = PintigTokens.seaInk;
+        accent = PintigTokens.sea;
+        break;
+    }
+
     return Semantics(
       liveRegion: true,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16.0),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              backgroundColor,
-              Color.lerp(backgroundColor, Colors.black, 0.18)!,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      container: true,
+      label: '$title. $message',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.all(14.0),
+          decoration: BoxDecoration(
+            color: tint,
+            borderRadius: BorderRadius.circular(14.0),
+            border: Border.all(color: accent.withOpacity(0.35), width: 1.0),
           ),
-          borderRadius: BorderRadius.circular(14.0),
-          boxShadow: [
-            BoxShadow(
-              color: backgroundColor.withOpacity(0.28),
-              blurRadius: 12.0,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8.0),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(10.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              PintigIcon(icon, size: 28.0, color: accent, dotColor: accent),
+              const SizedBox(width: 12.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.bold, color: ink),
+                    ),
+                    const SizedBox(height: 2.0),
+                    Text(
+                      message,
+                      style: TextStyle(fontSize: 14.5, height: 1.35, color: ink),
+                    ),
+                  ],
+                ),
               ),
-              child: Icon(icon, color: Colors.white, size: 26.0),
-            ),
-            const SizedBox(width: 14.0),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.22),
-                      borderRadius: BorderRadius.circular(4.0),
-                    ),
-                    child: const Text(
-                      'PINTIG CDSS REAL-TIME TRIAGE',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9.0,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6.0),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 4.0),
-                  Text(
-                    message,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.95),
-                      fontSize: 13.5,
-                      height: 1.35,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

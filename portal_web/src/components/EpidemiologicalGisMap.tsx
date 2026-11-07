@@ -3,7 +3,7 @@ import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { Layers, ShieldCheck, Radio } from 'lucide-react';
+import { PintigIcon } from './PintigIcons';
 
 interface HouseholdGeo {
   household_uuid: string;
@@ -345,36 +345,40 @@ export const EpidemiologicalGisMap: React.FC = () => {
   }, [selectedFilter, deidentifiedData]);
 
   return (
-    <div className="relative w-full h-[640px] rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white flex flex-col">
-      <div className="absolute top-4 left-4 z-[1000] bg-white/95 backdrop-blur-sm p-3.5 rounded-lg shadow-md border border-slate-200 max-w-md">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
-            <Layers className="h-4 w-4 text-teal-600" />
-            Epidemiological GIS Spot Map
-          </div>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <Radio className="h-3 w-3 animate-pulse" /> {liveEncounters.length} Live Synced
+    <div className="relative w-full h-[calc(100vh-12rem)] min-h-[480px] rounded-2xl overflow-hidden border border-pintig-line bg-white flex flex-col">
+      <div className="absolute top-4 left-4 z-[1000] bg-white p-4 rounded-xl shadow-md border border-pintig-line max-w-md">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-pintig-ink font-extrabold text-base">
+            <PintigIcon name="map" size={20} />
+            Where the cases are
+          </h2>
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-pintig-sea-tint text-pintig-sea-ink"
+            aria-live="polite"
+          >
+            <PintigIcon name="saved" size={14} dot={false} /> {liveEncounters.length} synced
           </span>
         </div>
-        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-          Brgy. P.I. Garcia • Purok 1–5, Sitio Tinago, Anas, Seaside & Lupa
+        <p className="text-sm text-pintig-muted mt-1 leading-snug">
+          Brgy. P.I. Garcia: Purok 1 to 5, Sitio Tinago, Anas, Seaside and Lupa
         </p>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Show on map">
           {[
-            { id: 'ALL', label: 'All Indicators' },
-            { id: 'MATERNAL_RISK', label: 'Maternal High Risk' },
-            { id: 'MALNUTRITION', label: 'Child Malnutrition' },
-            { id: 'IMMUNIZATION_AEFI', label: 'AEFI Alerts' },
-            { id: 'WATER_SANITATION', label: 'WASH Vulnerability' },
+            { id: 'ALL', label: 'Everything' },
+            { id: 'MATERNAL_RISK', label: 'High-risk pregnancy' },
+            { id: 'MALNUTRITION', label: 'Child malnutrition' },
+            { id: 'IMMUNIZATION_AEFI', label: 'Vaccine reactions' },
+            { id: 'WATER_SANITATION', label: 'Water and sanitation' },
           ].map((item) => (
             <button
               key={item.id}
               onClick={() => setSelectedFilter(item.id)}
-              className={`text-[11px] font-semibold px-2 py-1 rounded transition-colors ${
+              aria-pressed={selectedFilter === item.id}
+              className={`text-sm font-bold px-3 py-2 rounded-lg border-2 transition-colors ${
                 selectedFilter === item.id
-                  ? 'bg-teal-700 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-pintig-ink text-white border-pintig-ink'
+                  : 'bg-white text-pintig-ink border-pintig-field hover:border-pintig-ink'
               }`}
             >
               {item.label}
@@ -383,10 +387,10 @@ export const EpidemiologicalGisMap: React.FC = () => {
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-4 z-[1000] bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-slate-200 flex items-center gap-2 max-w-md">
-        <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-        <span className="text-[11px] text-slate-600 leading-tight">
-          <strong>RA 10173 Protected:</strong> Coordinates jittered using an orthogonal Gaussian distribution (&plusmn;150m) to protect residential privacy.
+      <div className="absolute bottom-4 left-4 z-[1000] bg-white px-3.5 py-2.5 rounded-xl shadow-md border border-pintig-line flex items-center gap-2.5 max-w-md">
+        <PintigIcon name="pin" size={20} className="shrink-0" />
+        <span className="text-sm text-pintig-muted leading-snug">
+          Locations are shifted by up to 150 m to protect residents' privacy.
         </span>
       </div>
 

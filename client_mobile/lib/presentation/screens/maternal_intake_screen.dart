@@ -7,6 +7,7 @@ import '../../domain/cdss/maternal_triage_engine.dart';
 import '../state/maternal_intake_notifier.dart';
 import '../theme/pintig_tokens.dart';
 import '../widgets/accessible_form_widgets.dart';
+import '../widgets/pintig_icons.dart';
 
 class MaternalIntakeScreen extends ConsumerStatefulWidget {
   final AutoDisposeStateNotifierProvider<MaternalIntakeNotifier, MaternalCareFormState> provider;
@@ -74,7 +75,7 @@ class _MaternalIntakeScreenState extends ConsumerState<MaternalIntakeScreen> {
       if (next.isSuccess) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Encounter committed & queued for sync successfully (<=100ms)'),
+            content: Text('Visit saved. It will send when you have signal.'),
             backgroundColor: PintigTokens.clinicalGreen,
           ),
         );
@@ -90,197 +91,182 @@ class _MaternalIntakeScreenState extends ConsumerState<MaternalIntakeScreen> {
       }
     });
 
+    final triage = formState.triageResult;
+    final PintigTone triageTone = triage == null
+        ? PintigTone.caution
+        : (triage.riskLevel == TriageRiskLevel.high
+            ? PintigTone.critical
+            : (triage.riskLevel == TriageRiskLevel.normal ? PintigTone.ok : PintigTone.caution));
+
     return Scaffold(
-      backgroundColor: PintigTokens.surfaceBackground,
-      appBar: AppBar(
-        title: const Text('Maternal Intake (TCL-MC)', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: PintigTokens.primaryBlue,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+      backgroundColor: PintigTokens.paper,
+      body: SafeArea(
+        bottom: false,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Deterministic CDSS Alert Banner
-            if (formState.triageResult != null) ...[
-              PintigCdssBanner(
-                title: formState.triageResult!.statusBadge,
-                message: formState.triageResult!.clinicalRationale,
-                backgroundColor: formState.triageResult!.riskLevel == TriageRiskLevel.high
-                    ? PintigTokens.clinicalRed
-                    : (formState.triageResult!.riskLevel == TriageRiskLevel.normal
-                        ? PintigTokens.clinicalGreen
-                        : PintigTokens.clinicalAmber),
-                icon: formState.triageResult!.riskLevel == TriageRiskLevel.high
-                    ? Icons.warning_rounded
-                    : Icons.check_circle_outline,
-              ),
-              const SizedBox(height: 16.0),
-            ],
-
-            if (formState.bpValidationError != null) ...[
-              PintigCdssBanner(
-                title: 'BP Entry Error / Dili Sakto',
-                message: formState.bpValidationError!,
-                backgroundColor: PintigTokens.clinicalAmber,
-                icon: Icons.info_outline,
-              ),
-              const SizedBox(height: 16.0),
-            ],
-
-            // Patient Demographic Identification
-            PintigTextField(
-              label: 'Patient Full Name (Ngalan sa Inahan) *',
-              hint: 'e.g. Maria Clara Santos',
-              controller: _nameController,
-              onChanged: notifier.setPatientName,
+            const PintigScreenHeader(
+              title: 'Prenatal visit',
+              subtitle: 'Maternal care (TCL-MC)',
             ),
-            const SizedBox(height: 14.0),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const PintigSectionTitle('Patient'),
+                    const SizedBox(height: 10.0),
+                    PintigTextField(
+                      label: 'Full name (Ngalan sa Inahan)',
+                      hint: 'e.g. Maria Clara Santos',
+                      controller: _nameController,
+                      onChanged: notifier.setPatientName,
+                    ),
+                    const SizedBox(height: 14.0),
+                    PintigDropdownField(
+                      label: 'Sitio or purok',
+                      value: formState.sitioPurok,
+                      options: _sitioOptions,
+                      onChanged: notifier.setSitioPurok,
+                    ),
+                    const SizedBox(height: 26.0),
 
-            const Text(
-              'Sitio / Purok Location (Brgy. P.I. Garcia) *',
-              style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6.0),
-            DropdownButtonFormField<String>(
-              value: formState.sitioPurok,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
+                    const PintigSectionTitle('Pregnancy dates'),
+                    const SizedBox(height: 10.0),
+                    PintigTextField(
+                      label: 'Last menstrual period (LMP)',
+                      hint: 'Pick the date',
+                      controller: _lmpController,
+                      readOnly: true,
+                      onTap: () => _selectLmpDate(context),
+                      suffixIcon: const PintigIcon(PintigIconName.calendar, size: 24.0),
+                    ),
+                    const SizedBox(height: 14.0),
+                    PintigTextField(
+                      label: 'Expected delivery date (EDC)',
+                      hint: 'Filled in from the LMP',
+                      controller: _edcController,
+                      readOnly: true,
+                    ),
+                    const SizedBox(height: 14.0),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: PintigTextField(
+                            label: 'Pregnancies (G)',
+                            hint: '1 or more',
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) => notifier.setGravidity(int.tryParse(v) ?? 1),
+                          ),
+                        ),
+                        const SizedBox(width: 12.0),
+                        Expanded(
+                          child: PintigTextField(
+                            label: 'Births (P)',
+                            hint: '0 or more',
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) => notifier.setParity(int.tryParse(v) ?? 0),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 26.0),
+
+                    const PintigSectionTitle("Today's readings"),
+                    const SizedBox(height: 10.0),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: PintigTextField(
+                            label: 'Top number (systolic)',
+                            hint: '60 to 260',
+                            unit: 'mmHg',
+                            controller: _systolicController,
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) => notifier.updateBloodPressure(systolic: int.tryParse(v)),
+                          ),
+                        ),
+                        const SizedBox(width: 12.0),
+                        Expanded(
+                          child: PintigTextField(
+                            label: 'Bottom number (diastolic)',
+                            hint: '30 to 160',
+                            unit: 'mmHg',
+                            controller: _diastolicController,
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) => notifier.updateBloodPressure(diastolic: int.tryParse(v)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (formState.bpValidationError != null) ...[
+                      const SizedBox(height: 10.0),
+                      PintigCdssBanner(
+                        title: 'Check the blood pressure (Dili sakto)',
+                        message: formState.bpValidationError!,
+                        tone: PintigTone.caution,
+                        icon: PintigIconName.info,
+                      ),
+                    ],
+                    const SizedBox(height: 14.0),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: PintigTextField(
+                            label: 'Weight',
+                            hint: 'Over 20',
+                            unit: 'kg',
+                            controller: _weightController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            onChanged: (v) => notifier.setWeight(double.tryParse(v)),
+                          ),
+                        ),
+                        const SizedBox(width: 12.0),
+                        Expanded(
+                          child: PintigTextField(
+                            label: 'Fundic height',
+                            hint: 'Optional',
+                            unit: 'cm',
+                            controller: _fundicController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            onChanged: (v) => notifier.setFundicHeight(double.tryParse(v)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18.0),
+                    PintigToggleRow(
+                      title: 'Gave iron and folic acid today',
+                      subtitle: 'Gihatagan og Iron & Folic Acid karon',
+                      value: formState.ironFolicGiven,
+                      activeColor: PintigTokens.sea,
+                      activeTint: PintigTokens.seaTint,
+                      onChanged: notifier.setIronFolic,
+                    ),
+                  ],
                 ),
               ),
-              items: _sitioOptions
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (val) {
-                if (val != null) notifier.setSitioPurok(val);
-              },
             ),
-            const SizedBox(height: 14.0),
-
-            // Obstetric Dates Section
-            PintigTextField(
-              label: 'Last Menstrual Period (LMP) *',
-              hint: 'Select LMP Date',
-              controller: _lmpController,
-              readOnly: true,
-              onTap: () => _selectLmpDate(context),
-              suffixIcon: const Icon(Icons.calendar_today, color: PintigTokens.primaryBlue),
-            ),
-            const SizedBox(height: 14.0),
-
-            PintigTextField(
-              label: 'Estimated Date of Confinement (EDC) [Auto-Derived]',
-              hint: 'Auto-calculated via Naegele Rule',
-              controller: _edcController,
-              readOnly: true,
-            ),
-            const SizedBox(height: 14.0),
-
-            Row(
-              children: [
-                Expanded(
-                  child: PintigTextField(
-                    label: 'Gravidity (G) *',
-                    hint: '>= 1',
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => notifier.setGravidity(int.tryParse(v) ?? 1),
+            PintigActionBar(
+              banners: [
+                if (triage != null)
+                  PintigCdssBanner(
+                    title: triage.statusBadge,
+                    message: triage.clinicalRationale,
+                    tone: triageTone,
+                    icon: triageTone == PintigTone.ok ? PintigIconName.check : PintigIconName.alert,
                   ),
-                ),
-                const SizedBox(width: 12.0),
-                Expanded(
-                  child: PintigTextField(
-                    label: 'Parity (P) *',
-                    hint: '>= 0',
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => notifier.setParity(int.tryParse(v) ?? 0),
-                  ),
-                ),
               ],
-            ),
-            const SizedBox(height: 14.0),
-
-            // Hemodynamics Section
-            Row(
-              children: [
-                Expanded(
-                  child: PintigTextField(
-                    label: 'Systolic BP (mmHg) *',
-                    hint: '60 - 260',
-                    controller: _systolicController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => notifier.updateBloodPressure(systolic: int.tryParse(v)),
-                  ),
-                ),
-                const SizedBox(width: 12.0),
-                Expanded(
-                  child: PintigTextField(
-                    label: 'Diastolic BP (mmHg) *',
-                    hint: '30 - 160',
-                    controller: _diastolicController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => notifier.updateBloodPressure(diastolic: int.tryParse(v)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14.0),
-
-            // Physical Parameters
-            Row(
-              children: [
-                Expanded(
-                  child: PintigTextField(
-                    label: 'Weight (kg) *',
-                    hint: '> 20.0',
-                    controller: _weightController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (v) => notifier.setWeight(double.tryParse(v)),
-                  ),
-                ),
-                const SizedBox(width: 12.0),
-                Expanded(
-                  child: PintigTextField(
-                    label: 'Fundic Height (cm)',
-                    hint: 'Optional',
-                    controller: _fundicController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (v) => notifier.setFundicHeight(double.tryParse(v)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16.0),
-
-            // Micronutrient Supplementation Switch
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(PintigTokens.inputRadius),
-                border: Border.all(color: PintigTokens.cardBorder),
+              disabledHint: formState.isValid ? null : 'Fill in the required fields to save.',
+              button: PintigPrimaryButton(
+                label: 'Save visit',
+                isLoading: formState.isSubmitting,
+                onPressed: formState.isValid ? () => notifier.submitEncounter() : null,
               ),
-              child: SwitchListTile(
-                title: const Text(
-                  'Iron & Folic Acid Given',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.0),
-                ),
-                subtitle: const Text('Gihatagan og Iron & Folic Acid karon'),
-                value: formState.ironFolicGiven,
-                activeColor: PintigTokens.primaryBlue,
-                onChanged: notifier.setIronFolic,
-              ),
-            ),
-            const SizedBox(height: 24.0),
-
-            // Transaction Submit Button
-            PintigPrimaryButton(
-              label: 'SAVE RECORD (ILISTA)',
-              isLoading: formState.isSubmitting,
-              onPressed: formState.isValid ? () => notifier.submitEncounter() : null,
             ),
           ],
         ),

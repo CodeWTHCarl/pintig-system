@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   collection,
   getDocs,
@@ -7,31 +7,36 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './config/firebase';
+import { currentMonthKey, monthLabel, monthParts } from './config/period';
 import { DashboardOverview } from './components/DashboardOverview';
 import { EpidemiologicalGisMap } from './components/EpidemiologicalGisMap';
+import { PintigIcon } from './components/PintigIcons';
 import { FhsisExportService, SyncedEncounterRow } from './services/FhsisExportService';
-import {
-  LayoutDashboard,
-  MapPin,
-  FileSpreadsheet,
-  ShieldCheck,
-  Radio,
-  Stethoscope,
-  RotateCcw,
-} from 'lucide-react';
 
 const TENANT_ID = 'ph_biliran_naval';
 const BARANGAY_ID = 'brgy_pi_garcia';
-const TARGET_MONTH = '2026-10';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'map'>('dashboard');
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [month, setMonth] = useState<string>(currentMonthKey());
+  const [online, setOnline] = useState<boolean>(typeof navigator === 'undefined' ? true : navigator.onLine);
+
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
 
   const handleResetDemoData = async () => {
     const confirmed = window.confirm(
-      'Reset Firestore to a clean presentation slate? This will remove old test records and reset the October 2026 KPI counters.'
+      `Delete ALL encounters and alerts for this barangay and start a clean demo slate? The ${monthLabel(month)} counters are reset too. This cannot be undone.`
     );
     if (!confirmed) return;
 
@@ -80,9 +85,9 @@ export const App: React.FC = () => {
 
       // 4. Reset monthly aggregate counters to clean baseline (1 verified maternal high-risk case)
       await setDoc(
-        doc(db, `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/aggregates/${TARGET_MONTH}`),
+        doc(db, `tenants/${TENANT_ID}/barangays/${BARANGAY_ID}/aggregates/${month}`),
         {
-          year_month: TARGET_MONTH,
+          year_month: month,
           total_encounters: 1,
           high_risk_alerts_count: 1,
           maternal_total: 1,
@@ -178,8 +183,8 @@ export const App: React.FC = () => {
       });
 
       await FhsisExportService.generateFhsisMonthlyWorkbook({
-        reportingYear: 2026,
-        reportingMonth: 'October',
+        reportingYear: monthParts(month).year,
+        reportingMonth: monthParts(month).monthName,
         barangayName: 'Barangay P.I. Garcia',
         municipality: 'Naval',
         province: 'Biliran',
@@ -216,118 +221,90 @@ export const App: React.FC = () => {
     }
   };
 
+  const navBtn = (active: boolean) =>
+    `flex items-center gap-3 h-12 px-3.5 rounded-xl text-base font-bold transition-colors ${
+      active ? 'bg-pintig-rose-tint text-pintig-crimson-ink' : 'text-pintig-ink hover:bg-pintig-paper'
+    }`;
+
   return (
-    <div className="flex h-screen bg-slate-100 font-sans text-slate-800">
-      {/* Pintig Brand Command Sidebar */}
-      <aside className="w-72 bg-gradient-to-b from-slate-950 via-slate-900 to-[#1f0d12] text-white flex flex-col justify-between shrink-0 border-r border-slate-800/80 shadow-2xl">
-        <div>
-          {/* Official Pintig Logo & Brand Header */}
-          <div className="p-6 border-b border-slate-800/80">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-[#FAF8F5] p-1.5 flex items-center justify-center shadow-lg shadow-rose-950/50 border border-white/80 shrink-0 overflow-hidden">
-                <img
-                  src="/pintig_logo.png"
-                  alt="Pintig Logo"
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-black tracking-wider text-white">Pintig</h1>
-                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-rose-500/20 text-rose-300 rounded border border-rose-500/30">
-                    PRO
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  RHU Naval Command Portal
-                </p>
-              </div>
-            </div>
-
-            {/* Live Edge Bridge Pill */}
-            <div className="mt-4 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between text-[11px]">
-              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                <Radio className="h-3.5 w-3.5 animate-pulse" /> Edge Sync Online
-              </span>
-              <span className="text-slate-400 font-mono">pintig-219</span>
-            </div>
+    <div className="min-h-screen flex flex-col lg:flex-row bg-pintig-paper text-pintig-ink font-sans">
+      <aside className="lg:w-64 lg:shrink-0 lg:h-screen lg:sticky lg:top-0 flex flex-col gap-4 p-4 lg:p-5 bg-white border-b lg:border-b-0 lg:border-r border-pintig-line">
+        {/* Logo: the official mark, on the logo's own ivory */}
+        <div className="flex items-center gap-3 px-1">
+          <div className="w-12 h-12 rounded-xl bg-pintig-ivory border border-pintig-line overflow-hidden shrink-0">
+            <img src="/pintig_mark.png" alt="Pintig" className="w-full h-full object-contain" />
           </div>
-
-          {/* Navigation Links */}
-          <div className="px-4 pt-5 pb-2">
-            <span className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-              Clinical Surveillance
-            </span>
-            <nav className="mt-2 space-y-1.5">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-bold transition-all ${
-                  activeTab === 'dashboard'
-                    ? 'bg-gradient-to-r from-[#C81E2B] to-rose-700 text-white shadow-lg shadow-rose-950/60'
-                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-white'
-                }`}
-              >
-                <LayoutDashboard className="h-4 w-4" /> Overview & Triage
-              </button>
-
-              <button
-                onClick={() => setActiveTab('map')}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-bold transition-all ${
-                  activeTab === 'map'
-                    ? 'bg-gradient-to-r from-[#C81E2B] to-rose-700 text-white shadow-lg shadow-rose-950/60'
-                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-white'
-                }`}
-              >
-                <MapPin className="h-4 w-4" /> Spot Mapping (GIS)
-              </button>
-            </nav>
+          <div>
+            <h1 className="text-xl font-extrabold leading-tight">Pintig</h1>
+            <p className="text-sm text-pintig-muted">RHU Naval</p>
           </div>
         </div>
 
-        {/* Bottom Command Officer & 1-Click FHSIS Export Panel */}
-        <div className="p-4 space-y-2.5 border-t border-slate-800/80 bg-slate-950/50">
-          <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
-              <Stethoscope className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-white truncate">Dr. Estrada, MHO</p>
-              <p className="text-[11px] text-slate-400 truncate">Brgy. P.I. Garcia • Naval</p>
-            </div>
-          </div>
-
+        <nav className="flex lg:flex-col gap-1" aria-label="Main">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            aria-current={activeTab === 'dashboard' ? 'page' : undefined}
+            className={navBtn(activeTab === 'dashboard')}
+          >
+            <PintigIcon name="alert" size={22} /> Alerts
+          </button>
+          <button
+            onClick={() => setActiveTab('map')}
+            aria-current={activeTab === 'map' ? 'page' : undefined}
+            className={navBtn(activeTab === 'map')}
+          >
+            <PintigIcon name="map" size={22} /> Map of cases
+          </button>
           <button
             onClick={handleDownloadFhsis}
             disabled={isExporting}
-            className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-700 disabled:to-slate-700 text-white p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition-all"
+            className={`${navBtn(false)} disabled:opacity-60`}
           >
-            <FileSpreadsheet className="h-4 w-4" />
-            {isExporting ? 'Generating DOH Workbook...' : '1-Click FHSIS M1/M2'}
+            <PintigIcon name="report" size={22} />
+            {isExporting ? 'Preparing report...' : 'Monthly report'}
           </button>
+        </nav>
 
-          <button
-            onClick={handleResetDemoData}
-            disabled={isResetting}
-            className="w-full bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white py-2 px-3 rounded-lg text-[11px] font-semibold border border-slate-800 flex items-center justify-center gap-1.5 transition-colors"
-            title="Clear old anonymous test cards and reset counters for live presentation"
-          >
-            <RotateCcw className={`h-3.5 w-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-            {isResetting ? 'Resetting Slate...' : 'Reset Demo Slate'}
-          </button>
-
-          <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 pt-0.5">
-            <ShieldCheck className="h-3 w-3 text-emerald-400" />
-            <span>RA 10173 & DOH FHSIS Compliant</span>
+        <div className="hidden lg:flex flex-col gap-3 mt-auto">
+          <div className="px-1">
+            <p className="text-sm font-extrabold">Dr. Estrada, MHO</p>
+            <p className="text-sm text-pintig-muted">Brgy. P.I. Garcia, Naval</p>
           </div>
+
+          <p
+            className={`flex items-center gap-2 px-1 text-sm font-semibold ${
+              online ? 'text-pintig-sea-ink' : 'text-pintig-crimson-ink'
+            }`}
+            role="status"
+          >
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${online ? 'bg-pintig-sea' : 'bg-pintig-crimson'}`}
+              aria-hidden="true"
+            />
+            {online ? 'Connected' : 'Offline. Showing the last data received.'}
+          </p>
+
+          <details className="px-1 text-sm">
+            <summary className="cursor-pointer text-pintig-muted underline underline-offset-2">Demo tools</summary>
+            <div className="mt-2 p-3 rounded-xl bg-pintig-amber-tint text-pintig-amber-ink">
+              <p className="font-semibold leading-snug">For presentations only. This deletes all test records.</p>
+              <button
+                onClick={handleResetDemoData}
+                disabled={isResetting}
+                className="mt-2 h-10 px-3 rounded-lg bg-white border-2 border-pintig-amber-ink font-bold disabled:opacity-60"
+              >
+                {isResetting ? 'Resetting...' : 'Reset demo data'}
+              </button>
+            </div>
+          </details>
         </div>
       </aside>
 
-      {/* Main Content Viewport */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-w-0">
         {activeTab === 'dashboard' ? (
-          <DashboardOverview />
+          <DashboardOverview month={month} onMonthChange={setMonth} />
         ) : (
-          <div className="p-6">
+          <div className="p-4 lg:p-8">
             <EpidemiologicalGisMap />
           </div>
         )}
